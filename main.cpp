@@ -65,7 +65,7 @@ void quickSortTickets(TicketResult arr[], int left, int right, bool byTime) {
     quickSortTickets(arr, i, right, byTime);
 }
 
-const char* parseLine(char *line, long long &ts, char params[256][2][256], int &paramCount) {
+const char* parseLine(char *line, long long &ts, char params[256][2][5000], int &paramCount) {
     char *p = line;
     ts = 0;
     while (*p == ' ') ++p;
@@ -88,7 +88,10 @@ const char* parseLine(char *line, long long &ts, char params[256][2][256], int &
             char key = *p++;
             while (*p == ' ') ++p;
             int valLen = 0;
-            while (*p && *p != ' ' && *p != '\n') params[paramCount][1][valLen++] = *p++;
+            while (*p && *p != ' ' && *p != '\n') {
+                params[paramCount][1][valLen++] = *p++;
+                params[paramCount][1][valLen] = '\0';
+            }
             params[paramCount][1][valLen] = '\0';
             params[paramCount][0][0] = key; params[paramCount][0][1] = '\0';
             ++paramCount;
@@ -99,7 +102,7 @@ const char* parseLine(char *line, long long &ts, char params[256][2][256], int &
     return cmd;
 }
 
-const char* getParam(char params[256][2][256], int paramCount, char key) {
+const char* getParam(char params[256][2][5000], int paramCount, char key) {
     for (int i = 0; i < paramCount; ++i)
         if (params[i][0][0] == key) return params[i][1];
     return nullptr;
@@ -107,16 +110,35 @@ const char* getParam(char params[256][2][256], int paramCount, char key) {
 
 void getStationTime(const TrainRecord &rec, int startDate, int stationIdx,
                     int &arrMin, int &levMin, int &dayOffset) {
+    if (stationIdx < 0 || stationIdx >= rec.stationNum) {
+        arrMin = levMin = 0;
+        dayOffset = 0;
+        return;
+    }
+    if (stationIdx == 0) {
+        arrMin = rec.startTime;
+        levMin = rec.startTime;
+        dayOffset = 0;
+        return;
+    }
     int curMin = rec.startTime;
     dayOffset = 0;
     for (int i = 0; i < stationIdx; ++i) {
         curMin += rec.travelTimes[i];
-        if (i < stationIdx - 1) curMin += rec.stopoverTimes[i];
         while (curMin >= 1440) { curMin -= 1440; ++dayOffset; }
+        if (i < stationIdx - 1) {
+            if (rec.stationNum > 2 && i < rec.stationNum - 2) {
+                curMin += rec.stopoverTimes[i];
+                while (curMin >= 1440) { curMin -= 1440; ++dayOffset; }
+            }
+        }
     }
     arrMin = curMin;
     if (stationIdx < rec.stationNum - 1) {
-        levMin = arrMin + rec.stopoverTimes[stationIdx];
+        levMin = arrMin;
+        if (rec.stationNum > 2 && stationIdx - 1 < rec.stationNum - 2) {
+            levMin += rec.stopoverTimes[stationIdx - 1];
+        }
         while (levMin >= 1440) { levMin -= 1440; ++dayOffset; }
     } else {
         levMin = arrMin;
@@ -142,7 +164,7 @@ int main() {
     char line[2048];
     while (std::fgets(line, sizeof(line), stdin)) {
         long long ts;
-        char params[256][2][256];
+        char params[256][2][5000];
         int paramCnt;
         const char* cmd = parseLine(line, ts, params, paramCnt);
 
@@ -262,7 +284,7 @@ int main() {
                 char key[64];
                 makeKey64(key, i, std::strlen(i));
                 int trainId;
-                if (trains.index.findFirst(key, trainId)) {   // 必须检查返回值
+                if (trains.index.findFirst(key, trainId)) {
                     for (int idx = 0; idx < stationNum; ++idx)
                         stIndex.addStation(stations[idx], i, trainId);
                 }
@@ -344,7 +366,7 @@ int main() {
                 int tid = trainsS[i];
                 TrainRecord rec;
                 std::fseek(trains.file, tid * sizeof(TrainRecord), SEEK_SET);
-                if (std::fread(&rec, sizeof(TrainRecord), 1, trains.file) != 1) continue; // 安全检查
+                if (std::fread(&rec, sizeof(TrainRecord), 1, trains.file) != 1) continue;
                 if (!rec.released) continue;
                 int idxS = -1;
                 for (int k = 0; k < rec.stationNum; ++k)
@@ -418,7 +440,7 @@ int main() {
                 int tid1 = trainsS[i];
                 TrainRecord rec1;
                 std::fseek(trains.file, tid1 * sizeof(TrainRecord), SEEK_SET);
-                if (std::fread(&rec1, sizeof(TrainRecord), 1, trains.file) != 1) continue; // 安全检查
+                if (std::fread(&rec1, sizeof(TrainRecord), 1, trains.file) != 1) continue;
                 if (!rec1.released) continue;
                 int idxS = -1;
                 for (int k = 0; k < rec1.stationNum; ++k)
@@ -439,7 +461,7 @@ int main() {
                         if (tid2 == tid1) continue;
                         TrainRecord rec2;
                         std::fseek(trains.file, tid2 * sizeof(TrainRecord), SEEK_SET);
-                        if (std::fread(&rec2, sizeof(TrainRecord), 1, trains.file) != 1) continue; // 安全检查
+                        if (std::fread(&rec2, sizeof(TrainRecord), 1, trains.file) != 1) continue;
                         if (!rec2.released) continue;
                         int idxK2 = -1, idxT2 = -1;
                         for (int x = 0; x < rec2.stationNum; ++x) {
@@ -545,9 +567,20 @@ int main() {
             const char *t = getParam(params, paramCnt, 't');
             const char *q = getParam(params, paramCnt, 'q');
             bool acceptPending = (q && std::strcmp(q, "true") == 0);
-            if (!users.isOnline(u)) { printf("[%lld] -1\n", ts); continue; }
+
+            if (!users.isOnline(u)) {
+                printf("[%lld] -1\n", ts);
+                continue;
+            }
             TrainRecord rec;
-            if (!trains.getTrain(i, rec) || !rec.released) { printf("[%lld] -1\n", ts); continue; }
+            if (!trains.getTrain(i, rec)) {
+                printf("[%lld] -1\n", ts);
+                continue;
+            }
+            if (!rec.released) {
+                printf("[%lld] -1\n", ts);
+                continue;
+            }
             int mon, day;
             std::sscanf(d, "%d-%d", &mon, &day);
             int date = dateToDays(mon, day);
@@ -556,14 +589,23 @@ int main() {
                 if (std::strcmp(rec.stations[k], f) == 0) idxF = k;
                 if (idxF != -1 && std::strcmp(rec.stations[k], t) == 0) { idxT = k; break; }
             }
-            if (idxF == -1 || idxT == -1) { printf("[%lld] -1\n", ts); continue; }
+            if (idxF == -1 || idxT == -1) {
+                printf("[%lld] -1\n", ts);
+                continue;
+            }
             int fArr, fLev, fDayOff;
             getStationTime(rec, date, idxF, fArr, fLev, fDayOff);
             int startDate = date - fDayOff;
-            if (startDate < rec.saleDate1 || startDate > rec.saleDate2) { printf("[%lld] -1\n", ts); continue; }
+            if (startDate < rec.saleDate1 || startDate > rec.saleDate2) {
+                printf("[%lld] -1\n", ts);
+                continue;
+            }
             int num = std::atoi(n);
             int totalPrice = 0;
             for (int k = idxF; k < idxT; ++k) totalPrice += rec.prices[k];
+            if (seats.querySeat(rec.trainID, startDate, idxF, idxT) == -1) {
+                seats.initSeats(rec.trainID, startDate, rec.seatNum, rec.stationNum - 1);
+            }
             if (seats.buySeat(rec.trainID, startDate, idxF, idxT, num)) {
                 orders.addOrder(u, rec.trainID, date, idxF, idxT, num, totalPrice * num, 0, ts);
                 printf("[%lld] %d\n", ts, totalPrice * num);
@@ -592,10 +634,10 @@ int main() {
             printf("[%lld] %d\n", ts, ctx.cnt);
             for (int i = 0; i < ctx.cnt; ++i) {
                 OrderRecord ord;
-                if (!orders.getOrder(ctx.ids[i], ord)) continue; // getOrder 检查了 fread
+                if (!orders.getOrder(ctx.ids[i], ord)) continue;
                 const char *statusStr = (ord.status == 0) ? "success" : (ord.status == 1 ? "pending" : "refunded");
                 TrainRecord trec;
-                if (!trains.getTrain(ord.trainID, trec)) continue; // getTrain 检查了 fread
+                if (!trains.getTrain(ord.trainID, trec)) continue;
                 int fArr, fLev, fDayOff;
                 getStationTime(trec, ord.date, ord.fromIdx, fArr, fLev, fDayOff);
                 int startDate = ord.date - fDayOff;

@@ -334,9 +334,12 @@ bool SeatManager::buySeat(const char *trainID, int date, int fromIdx, int toIdx,
     if (!index.findFirst(key, id)) return false;
     SeatRecord rec;
     std::fseek(file, id * sizeof(SeatRecord), SEEK_SET);
-    std::fread(&rec, sizeof(SeatRecord), 1, file);
-    for (int i = fromIdx; i < toIdx; ++i)
+    if (std::fread(&rec, sizeof(SeatRecord), 1, file) != 1) return false;
+    // 检查范围
+    if (fromIdx < 0 || toIdx > MAX_STATION - 1 || fromIdx >= toIdx) return false;
+    for (int i = fromIdx; i < toIdx; ++i) {
         if (rec.remain[i] < num) return false;
+    }
     for (int i = fromIdx; i < toIdx; ++i) rec.remain[i] -= num;
     std::fseek(file, id * sizeof(SeatRecord), SEEK_SET);
     std::fwrite(&rec, sizeof(SeatRecord), 1, file);
@@ -366,8 +369,10 @@ void SeatManager::initSeats(const char *trainID, int date, int totalSeats, int s
     std::strncpy(rec.trainID, trainID, 20);
     rec.date = date;
     for (int i = 0; i < segCount; ++i) rec.remain[i] = totalSeats;
-    int id = (int)(std::ftell(file) / sizeof(SeatRecord));
-    std::fseek(file, id * sizeof(SeatRecord), SEEK_SET);
+    // 先移动到文件末尾，获取当前大小，计算出新记录的 id
+    std::fseek(file, 0, SEEK_END);
+    long size = std::ftell(file);
+    int id = (int)(size / sizeof(SeatRecord));
     std::fwrite(&rec, sizeof(SeatRecord), 1, file);
     index.insert(key, id);
 }
@@ -431,6 +436,11 @@ void PendingManager::processRefund(const char *trainID, int date) {
         int orderId = ctx.ids[i];
         OrderRecord order;
         if (!orderMan->getOrder(orderId, order) || order.status != 1) continue;
+        if (seatMan->querySeat(order.trainID, order.date, order.fromIdx, order.toIdx) == -1) {
+            TrainRecord trec;
+            if (!trainMan->getTrain(order.trainID, trec)) continue;
+            seatMan->initSeats(order.trainID, order.date, trec.seatNum, trec.stationNum - 1);
+        }
         int minSeat = seatMan->querySeat(order.trainID, order.date, order.fromIdx, order.toIdx);
         if (minSeat >= order.num) {
             if (seatMan->buySeat(order.trainID, order.date, order.fromIdx, order.toIdx, order.num)) {

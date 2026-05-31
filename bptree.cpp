@@ -78,7 +78,11 @@ int BPTree::cacheHash(int id) {
 
 void BPTree::initCacheIndex() {
     for (int i = 0; i < CACHE_HASH_SIZE; ++i) cache_head[i] = -1;
-    for (int i = 0; i < CACHE_SIZE; ++i) cache_slots[i].valid = false;
+    for (int i = 0; i < CACHE_SIZE; ++i) {
+        cache_slots[i].valid = false;
+        cache_slots[i].stamp = 0;
+        cache_slots[i].hash_next = -1;
+    }
     cache_clock = 0;
 }
 
@@ -125,6 +129,12 @@ int BPTree::chooseCacheSlot() {
 }
 
 BPTree::Node& BPTree::getNode(int id) {
+    if (id == -1) {
+        static Node dummy;
+        std::memset(&dummy, 0, sizeof(dummy));
+        dummy.next = -1;
+        return dummy;
+    }
     int found = findCacheSlot(id);
     if (found != -1) {
         CacheSlot& slot = cache_slots[found];
@@ -246,6 +256,7 @@ int BPTree::findLeafGE(const char key[KEY_SIZE], int val) {
 }
 
 bool BPTree::firstItem(int node_id, char key[KEY_SIZE], int& val) {
+    if (node_id == -1) return false;
     int cur = node_id;
     while (cur != -1) {
         Node& node = getNode(cur);
@@ -282,7 +293,9 @@ void BPTree::refreshInternalNode(int node_id) {
     Node& node = getNode(node_id);
     if (node.type != 0) return;
     for (int i = 0; i < node.size; ++i) {
-        firstItem(node.children[i + 1], node.keys[i], node.vals[i]);
+        if (node.children[i + 1] != -1) {   // 跳过无效子节点
+            firstItem(node.children[i + 1], node.keys[i], node.vals[i]);
+        }
     }
     markDirty(node_id);
 }
