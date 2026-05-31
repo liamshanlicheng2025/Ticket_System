@@ -6,6 +6,7 @@
 BPTree::BPTree(const char* fname) {
     std::strncpy(filename, fname, 63);
     filename[63] = '\0';
+    cache_slots = new CacheSlot[CACHE_SIZE];
     initCacheIndex();
     tree_file = std::fopen(filename, "r+b");
     if (!tree_file) {
@@ -28,6 +29,7 @@ BPTree::BPTree(const char* fname) {
 BPTree::~BPTree() {
     flushAll();
     if (tree_file) std::fclose(tree_file);
+    delete[] cache_slots;
 }
 
 void BPTree::initHeader() {

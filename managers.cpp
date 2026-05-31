@@ -320,7 +320,7 @@ int SeatManager::querySeat(const char *trainID, int date, int fromIdx, int toIdx
     if (!index.findFirst(key, id)) return -1;
     SeatRecord rec;
     std::fseek(file, id * sizeof(SeatRecord), SEEK_SET);
-    std::fread(&rec, sizeof(SeatRecord), 1, file);
+    if (std::fread(&rec, sizeof(SeatRecord), 1, file) != 1) return -1;
     int minSeat = rec.remain[fromIdx];
     for (int i = fromIdx + 1; i < toIdx; ++i)
         if (rec.remain[i] < minSeat) minSeat = rec.remain[i];

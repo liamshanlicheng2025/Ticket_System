@@ -178,8 +178,10 @@ int main() {
             } else {
                 UserRecord rec;
                 std::fseek(users.file, id * sizeof(UserRecord), SEEK_SET);
-                std::fread(&rec, sizeof(UserRecord), 1, users.file);
-                printf("[%lld] %s %s %s %d\n", ts, rec.username, rec.name, rec.mail, rec.privilege);
+                if (std::fread(&rec, sizeof(UserRecord), 1, users.file) == 1)
+                    printf("[%lld] %s %s %s %d\n", ts, rec.username, rec.name, rec.mail, rec.privilege);
+                else
+                    printf("[%lld] -1\n", ts);
             }
         }
         else if (std::strcmp(cmd, "modify_profile") == 0) {
@@ -196,8 +198,10 @@ int main() {
             } else {
                 UserRecord rec;
                 std::fseek(users.file, id * sizeof(UserRecord), SEEK_SET);
-                std::fread(&rec, sizeof(UserRecord), 1, users.file);
-                printf("[%lld] %s %s %s %d\n", ts, rec.username, rec.name, rec.mail, rec.privilege);
+                if (std::fread(&rec, sizeof(UserRecord), 1, users.file) == 1)
+                    printf("[%lld] %s %s %s %d\n", ts, rec.username, rec.name, rec.mail, rec.privilege);
+                else
+                    printf("[%lld] -1\n", ts);
             }
         }
         else if (std::strcmp(cmd, "add_train") == 0) {
@@ -258,9 +262,10 @@ int main() {
                 char key[64];
                 makeKey64(key, i, std::strlen(i));
                 int trainId;
-                trains.index.findFirst(key, trainId);
-                for (int idx = 0; idx < stationNum; ++idx)
-                    stIndex.addStation(stations[idx], i, trainId);
+                if (trains.index.findFirst(key, trainId)) {   // 必须检查返回值
+                    for (int idx = 0; idx < stationNum; ++idx)
+                        stIndex.addStation(stations[idx], i, trainId);
+                }
             }
             printf("[%lld] %d\n", ts, res);
         }
@@ -286,7 +291,10 @@ int main() {
             } else {
                 TrainRecord rec;
                 std::fseek(trains.file, id * sizeof(TrainRecord), SEEK_SET);
-                std::fread(&rec, sizeof(TrainRecord), 1, trains.file);
+                if (std::fread(&rec, sizeof(TrainRecord), 1, trains.file) != 1) {
+                    printf("[%lld] -1\n", ts);
+                    continue;
+                }
                 printf("[%lld] %s %c\n", ts, rec.trainID, rec.type);
                 for (int idx = 0; idx < rec.stationNum; ++idx) {
                     int arrMin, levMin, dayOff;
@@ -336,7 +344,7 @@ int main() {
                 int tid = trainsS[i];
                 TrainRecord rec;
                 std::fseek(trains.file, tid * sizeof(TrainRecord), SEEK_SET);
-                std::fread(&rec, sizeof(TrainRecord), 1, trains.file);
+                if (std::fread(&rec, sizeof(TrainRecord), 1, trains.file) != 1) continue; // 安全检查
                 if (!rec.released) continue;
                 int idxS = -1;
                 for (int k = 0; k < rec.stationNum; ++k)
@@ -410,7 +418,7 @@ int main() {
                 int tid1 = trainsS[i];
                 TrainRecord rec1;
                 std::fseek(trains.file, tid1 * sizeof(TrainRecord), SEEK_SET);
-                std::fread(&rec1, sizeof(TrainRecord), 1, trains.file);
+                if (std::fread(&rec1, sizeof(TrainRecord), 1, trains.file) != 1) continue; // 安全检查
                 if (!rec1.released) continue;
                 int idxS = -1;
                 for (int k = 0; k < rec1.stationNum; ++k)
@@ -431,7 +439,7 @@ int main() {
                         if (tid2 == tid1) continue;
                         TrainRecord rec2;
                         std::fseek(trains.file, tid2 * sizeof(TrainRecord), SEEK_SET);
-                        std::fread(&rec2, sizeof(TrainRecord), 1, trains.file);
+                        if (std::fread(&rec2, sizeof(TrainRecord), 1, trains.file) != 1) continue; // 安全检查
                         if (!rec2.released) continue;
                         int idxK2 = -1, idxT2 = -1;
                         for (int x = 0; x < rec2.stationNum; ++x) {
@@ -570,21 +578,24 @@ int main() {
         else if (std::strcmp(cmd, "query_order") == 0) {
             const char *u = getParam(params, paramCnt, 'u');
             if (!users.isOnline(u)) { printf("[%lld] -1\n", ts); continue; }
-            char prefix[64]; std::memset(prefix, 0, 64); std::memcpy(prefix, u, std::strlen(u));
-            int ids[1000], cnt = 0;
+            ScanCtx ctx;
+            ctx.cnt = 0;
+            char prefix[64];
+            std::memset(prefix, 0, 64);
+            std::memcpy(prefix, u, std::strlen(u));
             orders.index.scanPrefix(prefix, std::strlen(u),
                                     [](const char key[64], int val, void *ctx) -> bool {
-                                        int *p = (int*)ctx;
-                                        if (p[0] < 1000) { p[1 + p[0]] = val; ++p[0]; return true; }
+                                        ScanCtx *d = (ScanCtx*)ctx;
+                                        if (d->cnt < 1000) { d->ids[d->cnt++] = val; return true; }
                                         return false;
-                                    }, &cnt);
-            printf("[%lld] %d\n", ts, cnt);
-            for (int i = 0; i < cnt; ++i) {
+                                    }, &ctx);
+            printf("[%lld] %d\n", ts, ctx.cnt);
+            for (int i = 0; i < ctx.cnt; ++i) {
                 OrderRecord ord;
-                orders.getOrder(ids[i], ord);
+                if (!orders.getOrder(ctx.ids[i], ord)) continue; // getOrder 检查了 fread
                 const char *statusStr = (ord.status == 0) ? "success" : (ord.status == 1 ? "pending" : "refunded");
                 TrainRecord trec;
-                trains.getTrain(ord.trainID, trec);
+                if (!trains.getTrain(ord.trainID, trec)) continue; // getTrain 检查了 fread
                 int fArr, fLev, fDayOff;
                 getStationTime(trec, ord.date, ord.fromIdx, fArr, fLev, fDayOff);
                 int startDate = ord.date - fDayOff;
@@ -604,45 +615,42 @@ int main() {
             const char *n = getParam(params, paramCnt, 'n');
             int nth = n ? std::atoi(n) : 1;
             if (!users.isOnline(u)) { printf("[%lld] -1\n", ts); continue; }
-            // 先获取用户第 nth 订单信息，以便在退款后处理座位恢复
-            char prefix[64]; std::memset(prefix, 0, 64); std::memcpy(prefix, u, std::strlen(u));
-            int ids[1000], cnt = 0;
+            ScanCtx ctx;
+            ctx.cnt = 0;
+            char prefix[64];
+            std::memset(prefix, 0, 64);
+            std::memcpy(prefix, u, std::strlen(u));
             orders.index.scanPrefix(prefix, std::strlen(u),
                                     [](const char key[64], int val, void *ctx) -> bool {
-                                        int *p = (int*)ctx;
-                                        if (p[0] < 1000) { p[1 + p[0]] = val; ++p[0]; return true; }
+                                        ScanCtx *d = (ScanCtx*)ctx;
+                                        if (d->cnt < 1000) { d->ids[d->cnt++] = val; return true; }
                                         return false;
-                                    }, &cnt);
-            if (nth < 1 || nth > cnt) { printf("[%lld] -1\n", ts); continue; }
-            int orderId = ids[nth - 1];
+                                    }, &ctx);
+            if (nth < 1 || nth > ctx.cnt) { printf("[%lld] -1\n", ts); continue; }
+            int orderId = ctx.ids[nth - 1];
             OrderRecord ord;
             if (!orders.getOrder(orderId, ord)) { printf("[%lld] -1\n", ts); continue; }
             int originalStatus = ord.status;
             if (originalStatus == 2) { printf("[%lld] -1\n", ts); continue; }
-            // 执行退款（修改状态为 2）
             if (!orders.refundOrder(u, nth, ts, ord)) { printf("[%lld] -1\n", ts); continue; }
-            // 如果原来是成功购票，则恢复座位并触发候补
             if (originalStatus == 0) {
                 TrainRecord rec;
-                if (trains.getTrain(ord.trainID, rec)) {
-                    int fArr, fLev, fDayOff;
-                    getStationTime(rec, ord.date, ord.fromIdx, fArr, fLev, fDayOff);
-                    int startDate = ord.date - fDayOff;
-                    seats.refundSeat(ord.trainID, startDate, ord.fromIdx, ord.toIdx, ord.num);
-                    pending.processRefund(ord.trainID, startDate);
-                }
+                if (!trains.getTrain(ord.trainID, rec)) { printf("[%lld] -1\n", ts); continue; }
+                int fArr, fLev, fDayOff;
+                getStationTime(rec, ord.date, ord.fromIdx, fArr, fLev, fDayOff);
+                int startDate = ord.date - fDayOff;
+                seats.refundSeat(ord.trainID, startDate, ord.fromIdx, ord.toIdx, ord.num);
+                pending.processRefund(ord.trainID, startDate);
             }
             printf("[%lld] 0\n", ts);
         }
         else if (std::strcmp(cmd, "clean") == 0) {
-            // 显式调用析构函数关闭所有文件，删除数据文件，再重新构造对象
             users.~UserManager();
             trains.~TrainManager();
             orders.~OrderManager();
             seats.~SeatManager();
             stIndex.~StationIndex();
             pending.~PendingManager();
-            // 删除所有相关数据文件
             std::remove("users.dat");
             std::remove("trains.dat");
             std::remove("orders.dat");
@@ -653,7 +661,6 @@ int main() {
             std::remove("seat_index.dat");
             std::remove("station_index.dat");
             std::remove("pending_index.dat");
-            // 使用 placement new 重新构造，所有对象回到初始空状态
             new (&users) UserManager();
             new (&trains) TrainManager();
             new (&orders) OrderManager();
