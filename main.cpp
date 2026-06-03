@@ -580,6 +580,10 @@ int main() {
                 continue;
             }
             int num = std::atoi(n);
+            if (num > rec.seatNum) {
+                printf("[%lld] -1\n", ts);
+                continue;
+            }
             int totalPrice = 0;
             for (int k = idxF; k < idxT; ++k) totalPrice += rec.prices[k];
             if (seats.querySeat(rec.trainID, startDate, idxF, idxT) == -1) {

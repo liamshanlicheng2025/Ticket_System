@@ -138,7 +138,12 @@ int UserManager::modifyProfile(const char *cur, const char *username,
     if (pass) std::strncpy(rec.password, pass, 30);
     if (name) std::strncpy(rec.name, name, 30);
     if (mail) std::strncpy(rec.mail, mail, 30);
-    if (priv != -1) rec.privilege = priv;
+    if (priv != -1) {
+        rec.privilege = priv;
+        for (int i = 0; i < onlineCnt; ++i)
+            if (!std::strcmp(online[i].name, username))
+                online[i].privilege = priv;
+    }
     std::fseek(file, id * sizeof(UserRecord), SEEK_SET);
     std::fwrite(&rec, sizeof(UserRecord), 1, file);
     return id;
