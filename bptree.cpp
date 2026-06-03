@@ -204,11 +204,11 @@ void BPTree::flushAll() {
     if (tree_file) std::fflush(tree_file);
 }
 
-int BPTree::internalFindChild(const Node& node, const char key[KEY_SIZE], int val) {
+int BPTree::internalFindChild(const Node& node, const char key[KEY_SIZE], int /*val*/) {
     int lo = 0, hi = node.size;
     while (lo < hi) {
         int mid = (lo + hi) >> 1;
-        if (item_cmp(node.keys[mid], node.vals[mid], key, val) <= 0)
+        if (key_cmp(node.keys[mid], key) <= 0)
             lo = mid + 1;
         else
             hi = mid;
@@ -216,11 +216,11 @@ int BPTree::internalFindChild(const Node& node, const char key[KEY_SIZE], int va
     return lo;
 }
 
-int BPTree::internalFindChildGE(const Node& node, const char key[KEY_SIZE], int val) {
+int BPTree::internalFindChildGE(const Node& node, const char key[KEY_SIZE], int /*val*/) {
     int lo = 0, hi = node.size;
     while (lo < hi) {
         int mid = (lo + hi) >> 1;
-        if (item_cmp(node.keys[mid], node.vals[mid], key, val) < 0)
+        if (key_cmp(node.keys[mid], key) < 0)
             lo = mid + 1;
         else
             hi = mid;

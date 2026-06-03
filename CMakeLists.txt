@@ -4,7 +4,7 @@ project(TicketSystem LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(ticket_system
+add_executable(code
         main.cpp
         managers.cpp
         bptree.cpp

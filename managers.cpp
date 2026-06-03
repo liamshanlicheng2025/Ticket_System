@@ -3,7 +3,6 @@
 #include <cstring>
 #include <cstdlib>
 
-// ========== 日期与时间工具 ==========
 int dateToDays(int month, int day) {
     static int cum[] = {0, 30, 61};
     return cum[month - 6] + (day - 1);
@@ -20,7 +19,7 @@ void makeKey64(char dest[64], const char *s, int len) {
     if (s) std::memcpy(dest, s, len < 64 ? len : 64);
 }
 
-// ========== UserManager ==========
+// UserManager
 UserManager::UserManager() : index("user_index.dat"), onlineCnt(0), userCount(0) {
     file = std::fopen("users.dat", "r+b");
     if (!file) file = std::fopen("users.dat", "w+b");
@@ -139,7 +138,7 @@ int UserManager::modifyProfile(const char *cur, const char *username,
     return id;
 }
 
-// ========== TrainManager ==========
+// TrainManager
 TrainManager::TrainManager() : index("train_index.dat"), trainCount(0) {
     file = std::fopen("trains.dat", "r+b");
     if (!file) file = std::fopen("trains.dat", "w+b");
@@ -235,7 +234,7 @@ bool TrainManager::isReleased(const char *trainID) {
     return getTrain(trainID, rec) && rec.released;
 }
 
-// ========== OrderManager ==========
+// OrderManager
 OrderManager::OrderManager() : index("order_index.dat"), orderCount(0) {
     file = std::fopen("orders.dat", "r+b");
     if (!file) file = std::fopen("orders.dat", "w+b");
@@ -300,7 +299,7 @@ bool OrderManager::getOrder(int orderId, OrderRecord &rec) {
     return std::fread(&rec, sizeof(OrderRecord), 1, file) == 1;
 }
 
-// ========== SeatManager ==========
+// SeatManager
 SeatManager::SeatManager() : index("seat_index.dat") {
     file = std::fopen("seats.dat", "r+b");
     if (!file) file = std::fopen("seats.dat", "w+b");
@@ -377,7 +376,7 @@ void SeatManager::initSeats(const char *trainID, int date, int totalSeats, int s
     index.insert(key, id);
 }
 
-// ========== StationIndex ==========
+// StationIndex
 StationIndex::StationIndex() : index("station_index.dat") {}
 StationIndex::~StationIndex() {}
 
@@ -405,7 +404,7 @@ void StationIndex::getTrainsByStation(const char *station, int *outIds, int &cnt
     for (int i = 0; i < cnt; ++i) outIds[i] = ctx.ids[i];
 }
 
-// ========== PendingManager ==========
+// PendingManager
 PendingManager::PendingManager(OrderManager *om, SeatManager *sm, TrainManager *tm)
         : index("pending_index.dat"), orderMan(om), seatMan(sm), trainMan(tm) {}
 PendingManager::~PendingManager() {}
