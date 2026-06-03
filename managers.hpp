@@ -58,6 +58,19 @@ struct ScanCtx {
     int cnt;
 };
 
+struct OrderScanCtx {
+    int ids[1000];
+    int cnt;
+    const char *username;
+    int usernameLen;
+};
+
+inline bool usernameMatchesKey(const char key[64], const char *username, int len) {
+    if (std::memcmp(key, username, len) != 0) return false;
+    if (len < 20 && key[len] != '\0') return false;
+    return true;
+}
+
 // 工具函数
 int dateToDays(int month, int day);
 void daysToDate(int days, int &month, int &day);

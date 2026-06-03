@@ -719,7 +719,9 @@ void BPTree::scanPrefix(const char *prefix, int prefixLen,
     int leaf_id = findLeafGE(search_key, INT_MIN);
     while (leaf_id != -1) {
         Node& leaf = getNode(leaf_id);
-        for (int i = 0; i < leaf.size; ++i) {
+        int start = 0;
+        while (start < leaf.size && key_cmp(leaf.keys[start], search_key) < 0) ++start;
+        for (int i = start; i < leaf.size; ++i) {
             if (std::memcmp(leaf.keys[i], prefix, prefixLen) != 0)
                 return;
             if (!callback(leaf.keys[i], leaf.vals[i], ctx))

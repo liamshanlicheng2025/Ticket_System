@@ -4,13 +4,19 @@
 #include <cstdlib>
 
 int dateToDays(int month, int day) {
-    static int cum[] = {0, 30, 61};
-    return cum[month - 6] + (day - 1);
+    static int cum[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+    return cum[month - 1] + (day - 1);
 }
 void daysToDate(int days, int &month, int &day) {
-    if (days < 30) { month = 6; day = days + 1; }
-    else if (days < 61) { month = 7; day = days - 30 + 1; }
-    else { month = 8; day = days - 61 + 1; }
+    static int cum[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365};
+    for (int i = 0; i < 12; ++i) {
+        if (days < cum[i + 1]) {
+            month = i + 1;
+            day = days - cum[i] + 1;
+            return;
+        }
+    }
+    month = 12; day = 31;
 }
 int timeToMin(int h, int m) { return h * 60 + m; }
 void minToTime(int mins, int &h, int &m) { h = mins / 60; m = mins % 60; }
@@ -245,6 +251,12 @@ OrderManager::OrderManager() : index("order_index.dat"), orderCount(0) {
 }
 OrderManager::~OrderManager() { if (file) std::fclose(file); }
 
+static void writeBE64(char *dest, unsigned long long val) {
+    for (int i = 7; i >= 0; --i) {
+        dest[7 - i] = (char)((val >> (i * 8)) & 0xFF);
+    }
+}
+
 int OrderManager::addOrder(const char *username, const char *trainID, int date,
                            int fromIdx, int toIdx, int num, int price,
                            int status, long long ts) {
@@ -264,24 +276,28 @@ int OrderManager::addOrder(const char *username, const char *trainID, int date,
     char key[64];
     std::memset(key, 0, 64);
     std::memcpy(key, username, std::strlen(username));
-    long long rev_ts = 0x7FFFFFFFFFFFFFFFLL - ts;
-    std::memcpy(key + 20, &rev_ts, sizeof(rev_ts));
+    unsigned long long rev_ts = 0x7FFFFFFFFFFFFFFFULL - (unsigned long long)ts;
+    writeBE64(key + 20, rev_ts);
     index.insert(key, orderCount++);
     return orderCount - 1;
 }
 
 bool OrderManager::refundOrder(const char *username, int nth, long long timestamp,
                                OrderRecord &order) {
-    ScanCtx ctx;
+    OrderScanCtx ctx;
     ctx.cnt = 0;
+    ctx.username = username;
+    ctx.usernameLen = std::strlen(username);
     char prefix[64];
     std::memset(prefix, 0, 64);
-    std::memcpy(prefix, username, std::strlen(username));
-    index.scanPrefix(prefix, std::strlen(username),
+    std::memcpy(prefix, username, ctx.usernameLen);
+    index.scanPrefix(prefix, ctx.usernameLen,
                      [](const char key[64], int val, void *ctx) -> bool {
-                         ScanCtx *d = (ScanCtx*)ctx;
-                         if (d->cnt < 1000) { d->ids[d->cnt++] = val; return true; }
-                         return false;
+                         OrderScanCtx *d = (OrderScanCtx*)ctx;
+                         if (d->cnt >= 1000) return false;
+                         if (!usernameMatchesKey(key, d->username, d->usernameLen)) return true;
+                         d->ids[d->cnt++] = val;
+                         return true;
                      }, &ctx);
     if (nth < 1 || nth > ctx.cnt) return false;
     int orderId = ctx.ids[nth - 1];
@@ -414,7 +430,7 @@ void PendingManager::addPending(const char *trainID, int date, long long ts, int
     std::memset(key, 0, 64);
     std::memcpy(key, trainID, std::strlen(trainID));
     std::memcpy(key + 20, &date, sizeof(date));
-    std::memcpy(key + 24, &ts, sizeof(ts));
+    writeBE64(key + 24, (unsigned long long)ts);
     index.insert(key, orderId);
 }
 
@@ -435,22 +451,22 @@ void PendingManager::processRefund(const char *trainID, int date) {
         int orderId = ctx.ids[i];
         OrderRecord order;
         if (!orderMan->getOrder(orderId, order) || order.status != 1) continue;
-        if (seatMan->querySeat(order.trainID, order.date, order.fromIdx, order.toIdx) == -1) {
+        if (seatMan->querySeat(order.trainID, date, order.fromIdx, order.toIdx) == -1) {
             TrainRecord trec;
             if (!trainMan->getTrain(order.trainID, trec)) continue;
-            seatMan->initSeats(order.trainID, order.date, trec.seatNum, trec.stationNum - 1);
+            seatMan->initSeats(order.trainID, date, trec.seatNum, trec.stationNum - 1);
         }
-        int minSeat = seatMan->querySeat(order.trainID, order.date, order.fromIdx, order.toIdx);
+        int minSeat = seatMan->querySeat(order.trainID, date, order.fromIdx, order.toIdx);
         if (minSeat >= order.num) {
-            if (seatMan->buySeat(order.trainID, order.date, order.fromIdx, order.toIdx, order.num)) {
+            if (seatMan->buySeat(order.trainID, date, order.fromIdx, order.toIdx, order.num)) {
                 order.status = 0;
                 std::fseek(orderMan->file, orderId * sizeof(OrderRecord), SEEK_SET);
                 std::fwrite(&order, sizeof(OrderRecord), 1, orderMan->file);
                 char fullKey[64];
                 std::memset(fullKey, 0, 64);
                 std::memcpy(fullKey, order.trainID, std::strlen(order.trainID));
-                std::memcpy(fullKey + 20, &order.date, sizeof(order.date));
-                std::memcpy(fullKey + 24, &order.timestamp, sizeof(order.timestamp));
+                std::memcpy(fullKey + 20, &date, sizeof(date));
+                writeBE64(fullKey + 24, (unsigned long long)order.timestamp);
                 index.remove(fullKey, orderId);
             }
         }
