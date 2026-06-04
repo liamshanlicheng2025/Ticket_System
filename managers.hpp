@@ -54,12 +54,12 @@ struct SeatRecord {
 
 // 安全的 scanPrefix 回调上下文
 struct ScanCtx {
-    int ids[1000];
+    int ids[5000];
     int cnt;
 };
 
 struct OrderScanCtx {
-    int ids[1000];
+    int ids[5000];
     int cnt;
     const char *username;
     int usernameLen;

@@ -299,7 +299,7 @@ bool OrderManager::refundOrder(const char *username, int nth, long long timestam
     index.scanPrefix(prefix, ctx.usernameLen,
                      [](const char key[64], int val, void *ctx) -> bool {
                          OrderScanCtx *d = (OrderScanCtx*)ctx;
-                         if (d->cnt >= 1000) return false;
+                         if (d->cnt >= 5000) return false;
                          if (!usernameMatchesKey(key, d->username, d->usernameLen)) return true;
                          d->ids[d->cnt++] = val;
                          return true;
@@ -410,9 +410,9 @@ void StationIndex::addStation(const char *station, const char *trainID, int trai
 }
 
 static bool stationScanCallback(const char key[64], int val, void *ctx) {
-    struct Ctx { int ids[1000]; int cnt; const char *station; int len; };
+    struct Ctx { int ids[5000]; int cnt; const char *station; int len; };
     Ctx *d = (Ctx*)ctx;
-    if (d->cnt >= 1000) return false;
+    if (d->cnt >= 5000) return false;
     if (std::memcmp(key, d->station, d->len) != 0) return true;
     if (key[d->len] != '\0') return true;
     d->ids[d->cnt++] = val;
@@ -420,7 +420,7 @@ static bool stationScanCallback(const char key[64], int val, void *ctx) {
 }
 
 void StationIndex::getTrainsByStation(const char *station, int *outIds, int &cnt) {
-    struct Ctx { int ids[1000]; int cnt; const char *station; int len; };
+    struct Ctx { int ids[5000]; int cnt; const char *station; int len; };
     Ctx ctx;
     ctx.cnt = 0;
     ctx.station = station;
@@ -457,7 +457,7 @@ void PendingManager::processRefund(const char *trainID, int date) {
     index.scanPrefix(prefix, 24,
                      [](const char key[64], int val, void *ctx) -> bool {
                          ScanCtx *d = (ScanCtx*)ctx;
-                         if (d->cnt < 1000) { d->ids[d->cnt++] = val; return true; }
+                         if (d->cnt < 5000) { d->ids[d->cnt++] = val; return true; }
                          return false;
                      }, &ctx);
     for (int i = 0; i < ctx.cnt; ++i) {

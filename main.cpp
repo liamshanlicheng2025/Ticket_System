@@ -333,9 +333,9 @@ int main() {
             int mon, day;
             std::sscanf(d, "%d-%d", &mon, &day);
             int date = dateToDays(mon, day);
-            int trainsS[1000], cntS;
+            int trainsS[5000], cntS;
             stIndex.getTrainsByStation(s, trainsS, cntS);
-            TicketResult results[1000];
+            TicketResult results[5000];
             int resCnt = 0;
             for (int i = 0; i < cntS; ++i) {
                 int tid = trainsS[i];
@@ -403,9 +403,9 @@ int main() {
             int mon, day;
             std::sscanf(d, "%d-%d", &mon, &day);
             int date = dateToDays(mon, day);
-            int trainsS[1000], cntS;
+            int trainsS[5000], cntS;
             stIndex.getTrainsByStation(s, trainsS, cntS);
-            int trainsT[1000], cntT;
+            int trainsT[5000], cntT;
             stIndex.getTrainsByStation(t, trainsT, cntT);
             bool found = false;
             TicketResult best1, best2;
@@ -613,7 +613,7 @@ int main() {
             orders.index.scanPrefix(prefix, ctx.usernameLen,
                                     [](const char key[64], int val, void *ctx) -> bool {
                                         OrderScanCtx *d = (OrderScanCtx*)ctx;
-                                        if (d->cnt >= 1000) return false;
+                                        if (d->cnt >= 5000) return false;
                                         if (!usernameMatchesKey(key, d->username, d->usernameLen)) return true;
                                         d->ids[d->cnt++] = val;
                                         return true;
@@ -654,7 +654,7 @@ int main() {
             orders.index.scanPrefix(prefix, ctx.usernameLen,
                                     [](const char key[64], int val, void *ctx) -> bool {
                                         OrderScanCtx *d = (OrderScanCtx*)ctx;
-                                        if (d->cnt >= 1000) return false;
+                                        if (d->cnt >= 5000) return false;
                                         if (!usernameMatchesKey(key, d->username, d->usernameLen)) return true;
                                         d->ids[d->cnt++] = val;
                                         return true;
