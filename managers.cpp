@@ -334,6 +334,7 @@ static void seatKey(char key[64], const char *trainID, int date) {
 }
 
 int SeatManager::querySeat(const char *trainID, int date, int fromIdx, int toIdx) {
+    if (fromIdx < 0 || toIdx > MAX_STATION - 1 || fromIdx >= toIdx) return -1;
     char key[64];
     seatKey(key, trainID, date);
     int id;
