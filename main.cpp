@@ -1,7 +1,6 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
-#include <algorithm>
 #include <new>
 #include "managers.hpp"
 
@@ -336,19 +335,14 @@ int main() {
             int date = dateToDays(mon, day);
             int trainsS[5000], cntS;
             stIndex.getTrainsByStation(s, trainsS, cntS);
-            std::sort(trainsS, trainsS + cntS);
             TicketResult results[5000];
             int resCnt = 0;
-            long long lastPos = -1;
+            int prefixArrMin[MAX_STATION], prefixArrDay[MAX_STATION];
+            int prefixLevMin[MAX_STATION], prefixLevDay[MAX_STATION];
+            int prefixPrice[MAX_STATION];
             for (int i = 0; i < cntS; ++i) {
                 int tid = trainsS[i];
-                long long pos = (long long)tid * sizeof(TrainRecord);
-                if (pos != lastPos) {
-                    std::fseek(trains.file, pos, SEEK_SET);
-                }
-                TrainRecord rec;
-                if (std::fread(&rec, sizeof(TrainRecord), 1, trains.file) != 1) continue;
-                lastPos = pos + sizeof(TrainRecord);
+                const TrainRecord &rec = trains.getTrainById(tid);
                 if (!rec.released) continue;
                 int idxS = -1;
                 for (int k = 0; k < rec.stationNum; ++k)
@@ -358,15 +352,34 @@ int main() {
                 for (int k = idxS + 1; k < rec.stationNum; ++k)
                     if (std::strcmp(rec.stations[k], t) == 0) { idxT = k; break; }
                 if (idxT == -1) continue;
-                int sArr, sLev, sArrDayOff, sLevDayOff;
-                getStationTime(rec, date, idxS, sArr, sLev, sArrDayOff, sLevDayOff);
-                int startDate = date - sLevDayOff;
+                // 预计算该车次各站的时间、价格前缀
+                prefixArrMin[0] = rec.startTime;
+                prefixArrDay[0] = 0;
+                prefixLevMin[0] = rec.startTime;
+                prefixLevDay[0] = 0;
+                prefixPrice[0] = 0;
+                for (int k = 1; k < rec.stationNum; ++k) {
+                    int curMin = prefixLevMin[k - 1] + rec.travelTimes[k - 1];
+                    int dayOff = prefixLevDay[k - 1];
+                    while (curMin >= 1440) { curMin -= 1440; ++dayOff; }
+                    prefixArrMin[k] = curMin;
+                    prefixArrDay[k] = dayOff;
+                    if (k < rec.stationNum - 1) {
+                        curMin += rec.stopoverTimes[k - 1];
+                        while (curMin >= 1440) { curMin -= 1440; ++dayOff; }
+                        prefixLevMin[k] = curMin;
+                        prefixLevDay[k] = dayOff;
+                    } else {
+                        prefixLevMin[k] = prefixArrMin[k];
+                        prefixLevDay[k] = prefixArrDay[k];
+                    }
+                    prefixPrice[k] = prefixPrice[k - 1] + rec.prices[k - 1];
+                }
+                int startDate = date - prefixLevDay[idxS];
                 if (startDate < rec.saleDate1 || startDate > rec.saleDate2) continue;
-                int price = 0;
-                for (int k = idxS; k < idxT; ++k) price += rec.prices[k];
-                int tArr, tLev, tArrDayOff, tLevDayOff;
-                getStationTime(rec, startDate, idxT, tArr, tLev, tArrDayOff, tLevDayOff);
-                int totalMin = (tArrDayOff - sLevDayOff) * 1440 + tArr - sLev;
+                int totalMin = (prefixArrDay[idxT] - prefixLevDay[idxS]) * 1440
+                             + prefixArrMin[idxT] - prefixLevMin[idxS];
+                int price = prefixPrice[idxT] - prefixPrice[idxS];
                 int minSeat = seats.querySeat(rec.trainID, startDate, idxS, idxT);
                 if (minSeat < 0) minSeat = rec.seatNum;
                 TicketResult res;
@@ -374,10 +387,10 @@ int main() {
                 std::strcpy(res.from, s);
                 std::strcpy(res.to, t);
                 int lM, lD, lH, lMin;
-                daysToDate(date, lM, lD); minToTime(sLev, lH, lMin);
+                daysToDate(date, lM, lD); minToTime(prefixLevMin[idxS], lH, lMin);
                 res.lMonth = lM; res.lDay = lD; res.lHour = lH; res.lMin = lMin;
                 int aM, aD, aH, aMin;
-                daysToDate(startDate + tArrDayOff, aM, aD); minToTime(tArr, aH, aMin);
+                daysToDate(startDate + prefixArrDay[idxT], aM, aD); minToTime(prefixArrMin[idxT], aH, aMin);
                 res.aMonth = aM; res.aDay = aD; res.aHour = aH; res.aMin = aMin;
                 res.price = price;
                 res.seat = minSeat;
@@ -408,19 +421,15 @@ int main() {
             int date = dateToDays(mon, day);
             int trainsS[5000], cntS;
             stIndex.getTrainsByStation(s, trainsS, cntS);
-            std::sort(trainsS, trainsS + cntS);
             int trainsT[5000], cntT;
             stIndex.getTrainsByStation(t, trainsT, cntT);
-            std::sort(trainsT, trainsT + cntT);
             bool found = false;
             TicketResult best1, best2;
             long long bestTotalTime = 0x7fffffffffffffffLL, bestTotalPrice = 0x7fffffffffffffffLL;
             char bestID1[21] = "", bestID2[21] = "";
             for (int i = 0; i < cntS; ++i) {
                 int tid1 = trainsS[i];
-                TrainRecord rec1;
-                std::fseek(trains.file, tid1 * sizeof(TrainRecord), SEEK_SET);
-                if (std::fread(&rec1, sizeof(TrainRecord), 1, trains.file) != 1) continue;
+                const TrainRecord &rec1 = trains.getTrainById(tid1);
                 if (!rec1.released) continue;
                 int idxS = -1;
                 for (int k = 0; k < rec1.stationNum; ++k)
@@ -445,9 +454,7 @@ int main() {
                     for (int j = 0; j < cntT; ++j) {
                         int tid2 = trainsT[j];
                         if (tid2 == tid1) continue;
-                        TrainRecord rec2;
-                        std::fseek(trains.file, tid2 * sizeof(TrainRecord), SEEK_SET);
-                        if (std::fread(&rec2, sizeof(TrainRecord), 1, trains.file) != 1) continue;
+                        const TrainRecord &rec2 = trains.getTrainById(tid2);
                         if (!rec2.released) continue;
                         int idxK2 = -1, idxT2 = -1;
                         for (int x = 0; x < rec2.stationNum; ++x) {
