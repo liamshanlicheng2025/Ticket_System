@@ -187,37 +187,15 @@ int UserManager::modifyProfile(const char *cur, const char *username,
 }
 
 // TrainManager
-void TrainManager::ensureCache(int needed) {
-    if (needed <= cacheCap) return;
-    int newCap = cacheCap ? cacheCap : 16;
-    while (newCap < needed) newCap <<= 1;
-    TrainRecord *newCache = new TrainRecord[newCap];
-    if (cache) {
-        std::memcpy(newCache, cache, sizeof(TrainRecord) * trainCount);
-        delete[] cache;
-    }
-    cache = newCache;
-    cacheCap = newCap;
-}
-
-TrainManager::TrainManager() : index("train_index.dat"), trainCount(0), cache(nullptr), cacheCap(0) {
+TrainManager::TrainManager() : index("train_index.dat"), trainCount(0) {
     file = std::fopen("trains.dat", "r+b");
     if (!file) file = std::fopen("trains.dat", "w+b");
     if (file) {
         std::fseek(file, 0, SEEK_END);
-        long sz = std::ftell(file);
-        trainCount = (int)(sz / sizeof(TrainRecord));
-        if (trainCount > 0) {
-            ensureCache(trainCount);
-            std::fseek(file, 0, SEEK_SET);
-            std::fread(cache, sizeof(TrainRecord), trainCount, file);
-        }
+        trainCount = std::ftell(file) / sizeof(TrainRecord);
     }
 }
-TrainManager::~TrainManager() {
-    if (file) std::fclose(file);
-    delete[] cache;
-}
+TrainManager::~TrainManager() { if (file) std::fclose(file); }
 
 int TrainManager::addTrain(const char *trainID, int stationNum, int seatNum,
                            const char stations[][31], int prices[], int startTime,
@@ -245,8 +223,6 @@ int TrainManager::addTrain(const char *trainID, int stationNum, int seatNum,
     for (int i = 0; i < stationNum - 2; ++i) rec.stopoverTimes[i] = stopoverTimes[i];
     std::fseek(file, trainCount * sizeof(TrainRecord), SEEK_SET);
     std::fwrite(&rec, sizeof(TrainRecord), 1, file);
-    ensureCache(trainCount + 1);
-    cache[trainCount] = rec;
     index.insert(key, trainCount++);
     return 0;
 }
@@ -256,7 +232,10 @@ int TrainManager::deleteTrain(const char *trainID) {
     makeKey64(key, trainID, std::strlen(trainID));
     int id;
     if (!index.findFirst(key, id)) return -1;
-    if (cache[id].released) return -1;
+    TrainRecord rec;
+    std::fseek(file, id * sizeof(TrainRecord), SEEK_SET);
+    std::fread(&rec, sizeof(TrainRecord), 1, file);
+    if (rec.released) return -1;
     index.remove(key, id);
     return 0;
 }
@@ -266,10 +245,13 @@ int TrainManager::releaseTrain(const char *trainID) {
     makeKey64(key, trainID, std::strlen(trainID));
     int id;
     if (!index.findFirst(key, id)) return -1;
-    if (cache[id].released) return -1;
-    cache[id].released = true;
+    TrainRecord rec;
     std::fseek(file, id * sizeof(TrainRecord), SEEK_SET);
-    std::fwrite(&cache[id], sizeof(TrainRecord), 1, file);
+    std::fread(&rec, sizeof(TrainRecord), 1, file);
+    if (rec.released) return -1;
+    rec.released = true;
+    std::fseek(file, id * sizeof(TrainRecord), SEEK_SET);
+    std::fwrite(&rec, sizeof(TrainRecord), 1, file);
     return 0;
 }
 
@@ -278,7 +260,10 @@ int TrainManager::queryTrain(const char *trainID, int date) {
     makeKey64(key, trainID, std::strlen(trainID));
     int id;
     if (!index.findFirst(key, id)) return -1;
-    if (date < cache[id].saleDate1 || date > cache[id].saleDate2) return -1;
+    TrainRecord rec;
+    std::fseek(file, id * sizeof(TrainRecord), SEEK_SET);
+    std::fread(&rec, sizeof(TrainRecord), 1, file);
+    if (date < rec.saleDate1 || date > rec.saleDate2) return -1;
     return id;
 }
 
@@ -287,16 +272,14 @@ bool TrainManager::getTrain(const char *trainID, TrainRecord &rec) {
     makeKey64(key, trainID, std::strlen(trainID));
     int id;
     if (!index.findFirst(key, id)) return false;
-    rec = cache[id];
+    std::fseek(file, id * sizeof(TrainRecord), SEEK_SET);
+    std::fread(&rec, sizeof(TrainRecord), 1, file);
     return true;
 }
 
 bool TrainManager::isReleased(const char *trainID) {
-    char key[64];
-    makeKey64(key, trainID, std::strlen(trainID));
-    int id;
-    if (!index.findFirst(key, id)) return false;
-    return cache[id].released;
+    TrainRecord rec;
+    return getTrain(trainID, rec) && rec.released;
 }
 
 // OrderManager
