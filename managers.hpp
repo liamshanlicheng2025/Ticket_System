@@ -5,11 +5,12 @@
 #include <cstring>
 
 const int MAX_STATION = 100;
-const int MAX_LOGIN = 1000;
+const int ONLINE_HASH_SIZE = 8192;
 
-struct OnlineUser {
+struct OnlineEntry {
     char name[21];
     int privilege;
+    int next;
 };
 
 struct UserRecord {
@@ -83,8 +84,11 @@ public:
     FILE *file;
     BPTree index;
     int userCount;
-    OnlineUser online[MAX_LOGIN];
+    OnlineEntry *onlinePool;
+    int *onlineHead;
     int onlineCnt;
+    int onlineCap;
+    int onlineFree;
 
     UserManager();
     ~UserManager();
@@ -98,6 +102,9 @@ public:
                       const char *mail, int priv);
     bool isOnline(const char *username);
     int getPrivilege(const char *username);
+private:
+    void expandOnline();
+    static unsigned int onlineHash(const char *s);
 };
 
 class TrainManager {
@@ -105,6 +112,8 @@ public:
     FILE *file;
     BPTree index;
     int trainCount;
+    TrainRecord *cache;
+    int cacheCap;
 
     TrainManager();
     ~TrainManager();
@@ -117,6 +126,8 @@ public:
     int queryTrain(const char *trainID, int date);
     bool getTrain(const char *trainID, TrainRecord &rec);
     bool isReleased(const char *trainID);
+    const TrainRecord& getTrainById(int id) const { return cache[id]; }
+    void ensureCache(int needed);
 };
 
 class OrderManager {
