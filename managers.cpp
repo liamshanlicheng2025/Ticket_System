@@ -409,18 +409,26 @@ void StationIndex::addStation(const char *station, const char *trainID, int trai
     index.insert(key, trainRecId);
 }
 
+static bool stationScanCallback(const char key[64], int val, void *ctx) {
+    struct Ctx { int ids[1000]; int cnt; const char *station; int len; };
+    Ctx *d = (Ctx*)ctx;
+    if (d->cnt >= 1000) return false;
+    if (std::memcmp(key, d->station, d->len) != 0) return true;
+    if (key[d->len] != '\0') return true;
+    d->ids[d->cnt++] = val;
+    return true;
+}
+
 void StationIndex::getTrainsByStation(const char *station, int *outIds, int &cnt) {
-    ScanCtx ctx;
+    struct Ctx { int ids[1000]; int cnt; const char *station; int len; };
+    Ctx ctx;
     ctx.cnt = 0;
+    ctx.station = station;
+    ctx.len = std::strlen(station);
     char prefix[64];
     std::memset(prefix, 0, 64);
-    std::memcpy(prefix, station, std::strlen(station));
-    index.scanPrefix(prefix, std::strlen(station),
-                     [](const char key[64], int val, void *ctx) -> bool {
-                         ScanCtx *d = (ScanCtx*)ctx;
-                         if (d->cnt < 1000) { d->ids[d->cnt++] = val; return true; }
-                         return false;
-                     }, &ctx);
+    std::memcpy(prefix, station, ctx.len);
+    index.scanPrefix(prefix, ctx.len, stationScanCallback, &ctx);
     cnt = ctx.cnt;
     for (int i = 0; i < cnt; ++i) outIds[i] = ctx.ids[i];
 }
