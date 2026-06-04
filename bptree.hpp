@@ -6,7 +6,7 @@
 class BPTree {
 public:
     static const int KEY_SIZE = 64;
-    static const int ORDER = 128;
+    static const int ORDER = 100;
 
     BPTree(const char *filename);
     ~BPTree();
@@ -48,11 +48,11 @@ private:
     };
 
     static const int MIN_KEYS = ORDER / 2;
-    static const int CACHE_SIZE = 350;
+    static const int CACHE_SIZE = 280;
     static const int CACHE_HASH_SIZE = 1024;
     static const int MAX_HEIGHT = 16;
     static const unsigned int MAGIC = 0x33545042u;
-    static const unsigned int VERSION = 4;
+    static const unsigned int VERSION = 5;
 
     FILE *tree_file;
     Header header;
