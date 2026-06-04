@@ -55,12 +55,12 @@ struct SeatRecord {
 
 // 安全的 scanPrefix 回调上下文
 struct ScanCtx {
-    int ids[5000];
+    int ids[3000];
     int cnt;
 };
 
 struct OrderScanCtx {
-    int ids[5000];
+    int ids[3000];
     int cnt;
     const char *username;
     int usernameLen;
@@ -112,8 +112,6 @@ public:
     FILE *file;
     BPTree index;
     int trainCount;
-    TrainRecord *cache;
-    int cacheCap;
 
     TrainManager();
     ~TrainManager();
@@ -126,8 +124,6 @@ public:
     int queryTrain(const char *trainID, int date);
     bool getTrain(const char *trainID, TrainRecord &rec);
     bool isReleased(const char *trainID);
-    const TrainRecord& getTrainById(int id) const { return cache[id]; }
-    void ensureCache(int needed);
 };
 
 class OrderManager {
