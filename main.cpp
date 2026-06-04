@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <algorithm>
 #include <new>
 #include "managers.hpp"
 
@@ -137,9 +138,9 @@ int main() {
     PendingManager pending(&orders, &seats, &trains);
 
     char line[2048];
+    static char params[256][2][5000];
     while (std::fgets(line, sizeof(line), stdin)) {
         long long ts;
-        char params[256][2][5000];
         int paramCnt;
         const char* cmd = parseLine(line, ts, params, paramCnt);
 
@@ -335,13 +336,19 @@ int main() {
             int date = dateToDays(mon, day);
             int trainsS[5000], cntS;
             stIndex.getTrainsByStation(s, trainsS, cntS);
+            std::sort(trainsS, trainsS + cntS);
             TicketResult results[5000];
             int resCnt = 0;
+            long long lastPos = -1;
             for (int i = 0; i < cntS; ++i) {
                 int tid = trainsS[i];
+                long long pos = (long long)tid * sizeof(TrainRecord);
+                if (pos != lastPos) {
+                    std::fseek(trains.file, pos, SEEK_SET);
+                }
                 TrainRecord rec;
-                std::fseek(trains.file, tid * sizeof(TrainRecord), SEEK_SET);
                 if (std::fread(&rec, sizeof(TrainRecord), 1, trains.file) != 1) continue;
+                lastPos = pos + sizeof(TrainRecord);
                 if (!rec.released) continue;
                 int idxS = -1;
                 for (int k = 0; k < rec.stationNum; ++k)
@@ -360,12 +367,8 @@ int main() {
                 int tArr, tLev, tArrDayOff, tLevDayOff;
                 getStationTime(rec, startDate, idxT, tArr, tLev, tArrDayOff, tLevDayOff);
                 int totalMin = (tArrDayOff - sLevDayOff) * 1440 + tArr - sLev;
-                int minSeat = 0x7fffffff;
-                for (int k = idxS; k < idxT; ++k) {
-                    int segSeat = seats.querySeat(rec.trainID, startDate, k, k + 1);
-                    if (segSeat < 0) segSeat = rec.seatNum;
-                    if (segSeat < minSeat) minSeat = segSeat;
-                }
+                int minSeat = seats.querySeat(rec.trainID, startDate, idxS, idxT);
+                if (minSeat < 0) minSeat = rec.seatNum;
                 TicketResult res;
                 std::strcpy(res.trainID, rec.trainID);
                 std::strcpy(res.from, s);
@@ -405,8 +408,10 @@ int main() {
             int date = dateToDays(mon, day);
             int trainsS[5000], cntS;
             stIndex.getTrainsByStation(s, trainsS, cntS);
+            std::sort(trainsS, trainsS + cntS);
             int trainsT[5000], cntT;
             stIndex.getTrainsByStation(t, trainsT, cntT);
+            std::sort(trainsT, trainsT + cntT);
             bool found = false;
             TicketResult best1, best2;
             long long bestTotalTime = 0x7fffffffffffffffLL, bestTotalPrice = 0x7fffffffffffffffLL;
@@ -435,12 +440,8 @@ int main() {
                     int firstDepAbs = date * 1440 + sLev1;
                     int price1 = 0;
                     for (int x = idxS; x < k; ++x) price1 += rec1.prices[x];
-                    int ss1 = 0x7fffffff;
-                    for (int x = idxS; x < k; ++x) {
-                        int seg = seats.querySeat(rec1.trainID, startDate1, x, x+1);
-                        if (seg < 0) seg = rec1.seatNum;
-                        if (seg < ss1) ss1 = seg;
-                    }
+                    int ss1 = seats.querySeat(rec1.trainID, startDate1, idxS, k);
+                    if (ss1 < 0) ss1 = rec1.seatNum;
                     for (int j = 0; j < cntT; ++j) {
                         int tid2 = trainsT[j];
                         if (tid2 == tid1) continue;
@@ -516,12 +517,8 @@ int main() {
                             daysToDate(tryStart + tArrDayOff2, lM, lD); minToTime(tArr2, lH, lMin);
                             best2.aMonth = lM; best2.aDay = lD; best2.aHour = lH; best2.aMin = lMin;
                             best2.price = price2;
-                            int ss2 = 0x7fffffff;
-                            for (int x = idxK2; x < idxT2; ++x) {
-                                int seg = seats.querySeat(rec2.trainID, tryStart, x, x+1);
-                                if (seg < 0) seg = rec2.seatNum;
-                                if (seg < ss2) ss2 = seg;
-                            }
+                            int ss2 = seats.querySeat(rec2.trainID, tryStart, idxK2, idxT2);
+                            if (ss2 < 0) ss2 = rec2.seatNum;
                             best2.seat = ss2;
                         }
                     }
@@ -568,7 +565,7 @@ int main() {
                 if (std::strcmp(rec.stations[k], f) == 0) idxF = k;
                 if (idxF != -1 && std::strcmp(rec.stations[k], t) == 0) { idxT = k; break; }
             }
-            if (idxF == -1 || idxT == -1) {
+            if (idxF == -1 || idxT == -1 || idxF >= idxT) {
                 printf("[%lld] -1\n", ts);
                 continue;
             }
