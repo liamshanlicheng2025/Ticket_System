@@ -240,7 +240,7 @@ int TrainManager::deleteTrain(const char *trainID) {
     return 0;
 }
 
-int TrainManager::releaseTrain(const char *trainID) {
+int TrainManager::releaseTrain(const char *trainID, int &outRecId) {
     char key[64];
     makeKey64(key, trainID, std::strlen(trainID));
     int id;
@@ -252,6 +252,7 @@ int TrainManager::releaseTrain(const char *trainID) {
     rec.released = true;
     std::fseek(file, id * sizeof(TrainRecord), SEEK_SET);
     std::fwrite(&rec, sizeof(TrainRecord), 1, file);
+    outRecId = id;
     return 0;
 }
 
@@ -274,6 +275,12 @@ bool TrainManager::getTrain(const char *trainID, TrainRecord &rec) {
     if (!index.findFirst(key, id)) return false;
     std::fseek(file, id * sizeof(TrainRecord), SEEK_SET);
     std::fread(&rec, sizeof(TrainRecord), 1, file);
+    return true;
+}
+
+bool TrainManager::getTrainByRecId(int recId, TrainRecord &rec) {
+    std::fseek(file, recId * sizeof(TrainRecord), SEEK_SET);
+    if (std::fread(&rec, sizeof(TrainRecord), 1, file) != 1) return false;
     return true;
 }
 
@@ -358,9 +365,13 @@ bool OrderManager::getOrder(int orderId, OrderRecord &rec) {
 }
 
 // SeatManager
-SeatManager::SeatManager() : index("seat_index.dat") {
+SeatManager::SeatManager() : index("seat_index.dat"), seatCacheNext(0) {
     file = std::fopen("seats.dat", "r+b");
     if (!file) file = std::fopen("seats.dat", "w+b");
+    for (int i = 0; i < SEAT_CACHE_SIZE; ++i) {
+        seatCacheDate[i] = -1;
+        seatCacheTrainID[i][0] = '\0';
+    }
 }
 SeatManager::~SeatManager() { if (file) std::fclose(file); }
 
@@ -370,8 +381,25 @@ static void seatKey(char key[64], const char *trainID, int date) {
     std::memcpy(key + 20, &date, sizeof(date));
 }
 
+void SeatManager::invalidateSeatCache(const char *trainID, int date) {
+    for (int i = 0; i < SEAT_CACHE_SIZE; ++i) {
+        if (seatCacheDate[i] == date && std::strcmp(seatCacheTrainID[i], trainID) == 0) {
+            seatCacheDate[i] = -1;
+            seatCacheTrainID[i][0] = '\0';
+        }
+    }
+}
+
 int SeatManager::querySeat(const char *trainID, int date, int fromIdx, int toIdx) {
     if (fromIdx < 0 || toIdx > MAX_STATION - 1 || fromIdx >= toIdx) return -1;
+    for (int i = 0; i < SEAT_CACHE_SIZE; ++i) {
+        if (seatCacheDate[i] == date && std::strcmp(seatCacheTrainID[i], trainID) == 0) {
+            int minSeat = seatCache[i].remain[fromIdx];
+            for (int j = fromIdx + 1; j < toIdx; ++j)
+                if (seatCache[i].remain[j] < minSeat) minSeat = seatCache[i].remain[j];
+            return minSeat;
+        }
+    }
     char key[64];
     seatKey(key, trainID, date);
     int id;
@@ -379,6 +407,11 @@ int SeatManager::querySeat(const char *trainID, int date, int fromIdx, int toIdx
     SeatRecord rec;
     std::fseek(file, id * sizeof(SeatRecord), SEEK_SET);
     if (std::fread(&rec, sizeof(SeatRecord), 1, file) != 1) return -1;
+    int slot = seatCacheNext;
+    seatCacheNext = (seatCacheNext + 1) % SEAT_CACHE_SIZE;
+    seatCacheDate[slot] = date;
+    std::strcpy(seatCacheTrainID[slot], trainID);
+    seatCache[slot] = rec;
     int minSeat = rec.remain[fromIdx];
     for (int i = fromIdx + 1; i < toIdx; ++i)
         if (rec.remain[i] < minSeat) minSeat = rec.remain[i];
@@ -393,7 +426,6 @@ bool SeatManager::buySeat(const char *trainID, int date, int fromIdx, int toIdx,
     SeatRecord rec;
     std::fseek(file, id * sizeof(SeatRecord), SEEK_SET);
     if (std::fread(&rec, sizeof(SeatRecord), 1, file) != 1) return false;
-    // 检查范围
     if (fromIdx < 0 || toIdx > MAX_STATION - 1 || fromIdx >= toIdx) return false;
     for (int i = fromIdx; i < toIdx; ++i) {
         if (rec.remain[i] < num) return false;
@@ -401,6 +433,7 @@ bool SeatManager::buySeat(const char *trainID, int date, int fromIdx, int toIdx,
     for (int i = fromIdx; i < toIdx; ++i) rec.remain[i] -= num;
     std::fseek(file, id * sizeof(SeatRecord), SEEK_SET);
     std::fwrite(&rec, sizeof(SeatRecord), 1, file);
+    invalidateSeatCache(trainID, date);
     return true;
 }
 
@@ -412,9 +445,11 @@ void SeatManager::refundSeat(const char *trainID, int date, int fromIdx, int toI
     SeatRecord rec;
     std::fseek(file, id * sizeof(SeatRecord), SEEK_SET);
     std::fread(&rec, sizeof(SeatRecord), 1, file);
+    if (fromIdx < 0 || toIdx > MAX_STATION - 1 || fromIdx >= toIdx) return;
     for (int i = fromIdx; i < toIdx; ++i) rec.remain[i] += num;
     std::fseek(file, id * sizeof(SeatRecord), SEEK_SET);
     std::fwrite(&rec, sizeof(SeatRecord), 1, file);
+    invalidateSeatCache(trainID, date);
 }
 
 void SeatManager::initSeats(const char *trainID, int date, int totalSeats, int segCount) {
@@ -467,6 +502,47 @@ void StationIndex::getTrainsByStation(const char *station, int *outIds, int &cnt
     std::memset(prefix, 0, 64);
     std::memcpy(prefix, station, ctx.len);
     index.scanPrefix(prefix, ctx.len, stationScanCallback, &ctx);
+    cnt = ctx.cnt;
+    for (int i = 0; i < cnt; ++i) outIds[i] = ctx.ids[i];
+}
+
+// DirectRouteIndex
+DirectRouteIndex::DirectRouteIndex() : index("direct_index.dat") {}
+DirectRouteIndex::~DirectRouteIndex() {}
+
+void DirectRouteIndex::addRoute(const char *from, const char *to, int trainRecId) {
+    char key[64];
+    std::memset(key, 0, 64);
+    std::memcpy(key, from, std::strlen(from));
+    std::memcpy(key + 31, to, std::strlen(to));
+    index.insert(key, trainRecId);
+}
+
+static bool routeScanCallback(const char key[64], int val, void *ctx) {
+    struct Ctx { int ids[5000]; int cnt; const char *from; int fromLen; const char *to; int toLen; };
+    Ctx *d = (Ctx*)ctx;
+    if (d->cnt >= 5000) return false;
+    if (std::memcmp(key, d->from, d->fromLen) != 0) return true;
+    if (key[d->fromLen] != '\0') return true;
+    if (std::memcmp(key + 31, d->to, d->toLen) != 0) return true;
+    if (key[31 + d->toLen] != '\0') return true;
+    d->ids[d->cnt++] = val;
+    return true;
+}
+
+void DirectRouteIndex::getTrainsByRoute(const char *from, const char *to, int *outIds, int &cnt) {
+    struct Ctx { int ids[5000]; int cnt; const char *from; int fromLen; const char *to; int toLen; };
+    Ctx ctx;
+    ctx.cnt = 0;
+    ctx.from = from;
+    ctx.fromLen = std::strlen(from);
+    ctx.to = to;
+    ctx.toLen = std::strlen(to);
+    char prefix[64];
+    std::memset(prefix, 0, 64);
+    std::memcpy(prefix, from, ctx.fromLen);
+    std::memcpy(prefix + 31, to, ctx.toLen);
+    index.scanPrefix(prefix, 31 + ctx.toLen, routeScanCallback, &ctx);
     cnt = ctx.cnt;
     for (int i = 0; i < cnt; ++i) outIds[i] = ctx.ids[i];
 }
