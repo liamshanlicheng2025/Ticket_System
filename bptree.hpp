@@ -48,7 +48,7 @@ private:
     };
 
     static const int MIN_KEYS = ORDER / 2;
-    static const int CACHE_SIZE = 280;
+    static const int CACHE_SIZE = 512;
     static const int CACHE_HASH_SIZE = 1024;
     static const int MAX_HEIGHT = 16;
     static const unsigned int MAGIC = 0x33545042u;
