@@ -120,9 +120,10 @@ public:
                  int travelTimes[], int stopoverTimes[],
                  int sale1, int sale2, char type);
     int deleteTrain(const char *trainID);
-    int releaseTrain(const char *trainID);
+    int releaseTrain(const char *trainID, int &outRecId);
     int queryTrain(const char *trainID, int date);
     bool getTrain(const char *trainID, TrainRecord &rec);
+    bool getTrainByRecId(int recId, TrainRecord &rec);
     bool isReleased(const char *trainID);
 };
 
@@ -147,6 +148,11 @@ class SeatManager {
 public:
     FILE *file;
     BPTree index;
+    static const int SEAT_CACHE_SIZE = 256;
+    SeatRecord seatCache[SEAT_CACHE_SIZE];
+    int seatCacheDate[SEAT_CACHE_SIZE];
+    char seatCacheTrainID[SEAT_CACHE_SIZE][21];
+    int seatCacheNext;
 
     SeatManager();
     ~SeatManager();
@@ -154,6 +160,7 @@ public:
     bool buySeat(const char *trainID, int date, int fromIdx, int toIdx, int num);
     void refundSeat(const char *trainID, int date, int fromIdx, int toIdx, int num);
     void initSeats(const char *trainID, int date, int totalSeats, int segCount);
+    void invalidateSeatCache(const char *trainID, int date);
 };
 
 class StationIndex {
@@ -163,6 +170,15 @@ public:
     ~StationIndex();
     void addStation(const char *station, const char *trainID, int trainRecId);
     void getTrainsByStation(const char *station, int *outIds, int &cnt);
+};
+
+class DirectRouteIndex {
+public:
+    BPTree index;
+    DirectRouteIndex();
+    ~DirectRouteIndex();
+    void addRoute(const char *from, const char *to, int trainRecId);
+    void getTrainsByRoute(const char *from, const char *to, int *outIds, int &cnt);
 };
 
 class PendingManager {
