@@ -1,3 +1,4 @@
+
 #ifndef MANAGERS_HPP
 #define MANAGERS_HPP
 #include "bptree.hpp"
@@ -113,6 +114,8 @@ public:
     BPTree index;
     int trainCount;
 
+
+
     TrainManager();
     ~TrainManager();
     int addTrain(const char *trainID, int stationNum, int seatNum,
@@ -120,11 +123,12 @@ public:
                  int travelTimes[], int stopoverTimes[],
                  int sale1, int sale2, char type);
     int deleteTrain(const char *trainID);
-    int releaseTrain(const char *trainID, int &outRecId);
+    int releaseTrain(const char *trainID);
     int queryTrain(const char *trainID, int date);
     bool getTrain(const char *trainID, TrainRecord &rec);
-    bool getTrainByRecId(int recId, TrainRecord &rec);
     bool isReleased(const char *trainID);
+
+
 };
 
 class OrderManager {
@@ -148,11 +152,6 @@ class SeatManager {
 public:
     FILE *file;
     BPTree index;
-    static const int SEAT_CACHE_SIZE = 256;
-    SeatRecord seatCache[SEAT_CACHE_SIZE];
-    int seatCacheDate[SEAT_CACHE_SIZE];
-    char seatCacheTrainID[SEAT_CACHE_SIZE][21];
-    int seatCacheNext;
 
     SeatManager();
     ~SeatManager();
@@ -160,7 +159,20 @@ public:
     bool buySeat(const char *trainID, int date, int fromIdx, int toIdx, int num);
     void refundSeat(const char *trainID, int date, int fromIdx, int toIdx, int num);
     void initSeats(const char *trainID, int date, int totalSeats, int segCount);
-    void invalidateSeatCache(const char *trainID, int date);
+private:
+    struct SeatCacheEntry {
+        char trainID[21];
+        int date;
+        int recId;
+        int remain[MAX_STATION - 1];
+        bool valid;
+        unsigned long long stamp;
+    };
+    static const int SEAT_CACHE_SIZE = 1024;
+    SeatCacheEntry seatCache[SEAT_CACHE_SIZE];
+    unsigned long long seatClock;
+    int findSeatCache(const char *trainID, int date);
+    int chooseSeatCacheVictim();
 };
 
 class StationIndex {
@@ -170,15 +182,19 @@ public:
     ~StationIndex();
     void addStation(const char *station, const char *trainID, int trainRecId);
     void getTrainsByStation(const char *station, int *outIds, int &cnt);
-};
-
-class DirectRouteIndex {
-public:
-    BPTree index;
-    DirectRouteIndex();
-    ~DirectRouteIndex();
-    void addRoute(const char *from, const char *to, int trainRecId);
-    void getTrainsByRoute(const char *from, const char *to, int *outIds, int &cnt);
+private:
+    struct StCacheEntry {
+        char station[31];
+        int *ids;
+        int cnt;
+        bool valid;
+    };
+    static const int ST_CACHE_SIZE = 1024;
+    StCacheEntry stCache[ST_CACHE_SIZE];
+    int stCacheCount;
+    int findStCache(const char *station);
+    void insertStCache(const char *station, int *ids, int cnt);
+    void invalidateStCache(const char *station);
 };
 
 class PendingManager {
