@@ -129,6 +129,8 @@ void printAbsTime(int startDate, int dayOffset, int minute) {
 }
 
 int main() {
+    static char outbuf[262144];
+    std::setvbuf(stdout, outbuf, _IOFBF, sizeof(outbuf));
     UserManager users;
     TrainManager trains;
     OrderManager orders;
