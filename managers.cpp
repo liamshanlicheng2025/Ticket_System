@@ -60,11 +60,38 @@ UserManager::UserManager() : index("user_index.dat"), onlineCnt(0), userCount(0)
     onlineHead = new int[ONLINE_HASH_SIZE];
     for (int i = 0; i < ONLINE_HASH_SIZE; ++i) onlineHead[i] = -1;
     expandOnline();
+    for (int i = 0; i < USER_CACHE_SIZE; ++i) userCache[i].valid = false;
 }
 UserManager::~UserManager() {
     if (file) std::fclose(file);
     delete[] onlinePool;
     delete[] onlineHead;
+}
+
+int UserManager::findUserCache(const char *username) {
+    for (int i = 0; i < USER_CACHE_SIZE; ++i)
+        if (userCache[i].valid && std::strcmp(userCache[i].username, username) == 0)
+            return i;
+    return -1;
+}
+
+void UserManager::updateUserCache(const char *username, int recId, int privilege) {
+    int idx = findUserCache(username);
+    if (idx < 0) {
+        for (int i = 0; i < USER_CACHE_SIZE; ++i)
+            if (!userCache[i].valid) { idx = i; break; }
+        if (idx < 0) idx = 0; // simple overwrite
+    }
+    std::strncpy(userCache[idx].username, username, 20);
+    userCache[idx].username[20] = '\0';
+    userCache[idx].recId = recId;
+    userCache[idx].privilege = privilege;
+    userCache[idx].valid = true;
+}
+
+void UserManager::invalidateUserCache(const char *username) {
+    int idx = findUserCache(username);
+    if (idx >= 0) userCache[idx].valid = false;
 }
 
 int UserManager::addUser(const char *cur, const char *username, const char *pass,
@@ -86,19 +113,27 @@ int UserManager::addUser(const char *cur, const char *username, const char *pass
     rec.privilege = first ? 10 : priv;
     std::fseek(file, userCount * sizeof(UserRecord), SEEK_SET);
     std::fwrite(&rec, sizeof(UserRecord), 1, file);
-    index.insert(key, userCount++);
+    index.insert(key, userCount);
+    updateUserCache(username, userCount, rec.privilege);
+    ++userCount;
     return 0;
 }
 
 int UserManager::login(const char *username, const char *pass) {
-    char key[64];
-    makeKey64(key, username, std::strlen(username));
-    int id;
-    if (!index.findFirst(key, id)) return -1;
+    int id = -1;
+    int cidx = findUserCache(username);
+    if (cidx >= 0) {
+        id = userCache[cidx].recId;
+    } else {
+        char key[64];
+        makeKey64(key, username, std::strlen(username));
+        if (!index.findFirst(key, id)) return -1;
+    }
     UserRecord rec;
     std::fseek(file, id * sizeof(UserRecord), SEEK_SET);
     std::fread(&rec, sizeof(UserRecord), 1, file);
     if (std::strcmp(rec.password, pass)) return -1;
+    if (cidx < 0) updateUserCache(username, id, rec.privilege);
     unsigned int h = onlineHash(username);
     for (int e = onlineHead[h]; e != -1; e = onlinePool[e].next)
         if (!std::strcmp(onlinePool[e].name, username)) return -1;
@@ -147,13 +182,19 @@ int UserManager::getPrivilege(const char *username) {
 int UserManager::queryProfile(const char *cur, const char *username) {
     if (!isOnline(cur)) return -1;
     int curPriv = getPrivilege(cur);
-    char key[64];
-    makeKey64(key, username, std::strlen(username));
-    int id;
-    if (!index.findFirst(key, id)) return -1;
+    int id = -1;
+    int cidx = findUserCache(username);
+    if (cidx >= 0) {
+        id = userCache[cidx].recId;
+    } else {
+        char key[64];
+        makeKey64(key, username, std::strlen(username));
+        if (!index.findFirst(key, id)) return -1;
+    }
     UserRecord rec;
     std::fseek(file, id * sizeof(UserRecord), SEEK_SET);
     std::fread(&rec, sizeof(UserRecord), 1, file);
+    if (cidx < 0) updateUserCache(username, id, rec.privilege);
     if (curPriv <= rec.privilege && std::strcmp(cur, username)) return -1;
     return id;
 }
@@ -163,13 +204,19 @@ int UserManager::modifyProfile(const char *cur, const char *username,
                                const char *mail, int priv) {
     if (!isOnline(cur)) return -1;
     int curPriv = getPrivilege(cur);
-    char key[64];
-    makeKey64(key, username, std::strlen(username));
-    int id;
-    if (!index.findFirst(key, id)) return -1;
+    int id = -1;
+    int cidx = findUserCache(username);
+    if (cidx >= 0) {
+        id = userCache[cidx].recId;
+    } else {
+        char key[64];
+        makeKey64(key, username, std::strlen(username));
+        if (!index.findFirst(key, id)) return -1;
+    }
     UserRecord rec;
     std::fseek(file, id * sizeof(UserRecord), SEEK_SET);
     std::fread(&rec, sizeof(UserRecord), 1, file);
+    if (cidx < 0) updateUserCache(username, id, rec.privilege);
     if (curPriv <= rec.privilege && std::strcmp(cur, username)) return -1;
     if (priv != -1 && priv >= curPriv) return -1;
     if (pass) std::strncpy(rec.password, pass, 30);
@@ -183,41 +230,55 @@ int UserManager::modifyProfile(const char *cur, const char *username,
     }
     std::fseek(file, id * sizeof(UserRecord), SEEK_SET);
     std::fwrite(&rec, sizeof(UserRecord), 1, file);
+    if (priv != -1) updateUserCache(username, id, rec.privilege);
     return id;
 }
 
 // TrainManager
-TrainManager::TrainManager() : index("train_index.dat"), trainCount(0) {
-
-
-
-
-
-
-
-
-
-
-
-
-
+TrainManager::TrainManager() : index("train_index.dat"), trainCount(0), trainClock(0) {
     file = std::fopen("trains.dat", "r+b");
     if (!file) file = std::fopen("trains.dat", "w+b");
     if (file) {
         std::fseek(file, 0, SEEK_END);
         trainCount = std::ftell(file) / sizeof(TrainRecord);
-
-
-
-
-
-
     }
+    for (int i = 0; i < TRAIN_CACHE_SIZE; ++i) trainCache[i].valid = false;
 }
 TrainManager::~TrainManager() { if (file) std::fclose(file); }
 
+int TrainManager::findTrainCache(const char *trainID) {
+    for (int i = 0; i < TRAIN_CACHE_SIZE; ++i)
+        if (trainCache[i].valid && std::strcmp(trainCache[i].trainID, trainID) == 0)
+            return i;
+    return -1;
+}
 
+int TrainManager::chooseTrainCacheVictim() {
+    for (int i = 0; i < TRAIN_CACHE_SIZE; ++i)
+        if (!trainCache[i].valid) return i;
+    int victim = 0;
+    for (int i = 1; i < TRAIN_CACHE_SIZE; ++i)
+        if (trainCache[i].stamp < trainCache[victim].stamp) victim = i;
+    return victim;
+}
 
+void TrainManager::updateTrainCache(const char *trainID, const TrainRecord &rec, int recId) {
+    int idx = findTrainCache(trainID);
+    if (idx < 0) {
+        idx = chooseTrainCacheVictim();
+        std::strncpy(trainCache[idx].trainID, trainID, 20);
+        trainCache[idx].trainID[20] = '\0';
+    }
+    trainCache[idx].rec = rec;
+    trainCache[idx].recId = recId;
+    trainCache[idx].valid = true;
+    trainCache[idx].stamp = ++trainClock;
+}
+
+void TrainManager::invalidateTrainCache(const char *trainID) {
+    int idx = findTrainCache(trainID);
+    if (idx >= 0) trainCache[idx].valid = false;
+}
 
 int TrainManager::addTrain(const char *trainID, int stationNum, int seatNum,
                            const char stations[][31], int prices[], int startTime,
@@ -245,9 +306,9 @@ int TrainManager::addTrain(const char *trainID, int stationNum, int seatNum,
     for (int i = 0; i < stationNum - 2; ++i) rec.stopoverTimes[i] = stopoverTimes[i];
     std::fseek(file, trainCount * sizeof(TrainRecord), SEEK_SET);
     std::fwrite(&rec, sizeof(TrainRecord), 1, file);
-
-
-    index.insert(key, trainCount++);
+    index.insert(key, trainCount);
+    updateTrainCache(trainID, rec, trainCount);
+    ++trainCount;
     return 0;
 }
 
@@ -261,6 +322,7 @@ int TrainManager::deleteTrain(const char *trainID) {
     std::fread(&rec, sizeof(TrainRecord), 1, file);
     if (rec.released) return -1;
     index.remove(key, id);
+    invalidateTrainCache(trainID);
     return 0;
 }
 
@@ -276,37 +338,50 @@ int TrainManager::releaseTrain(const char *trainID) {
     rec.released = true;
     std::fseek(file, id * sizeof(TrainRecord), SEEK_SET);
     std::fwrite(&rec, sizeof(TrainRecord), 1, file);
+    updateTrainCache(trainID, rec, id);
     return 0;
 }
 
 int TrainManager::queryTrain(const char *trainID, int date) {
-    char key[64];
-    makeKey64(key, trainID, std::strlen(trainID));
-    int id;
-    if (!index.findFirst(key, id)) return -1;
     TrainRecord rec;
-    std::fseek(file, id * sizeof(TrainRecord), SEEK_SET);
-    std::fread(&rec, sizeof(TrainRecord), 1, file);
+    int id = -1;
+    int cidx = findTrainCache(trainID);
+    if (cidx >= 0) {
+        rec = trainCache[cidx].rec;
+        id = trainCache[cidx].recId;
+        trainCache[cidx].stamp = ++trainClock;
+    } else {
+        char key[64];
+        makeKey64(key, trainID, std::strlen(trainID));
+        if (!index.findFirst(key, id)) return -1;
+        std::fseek(file, id * sizeof(TrainRecord), SEEK_SET);
+        std::fread(&rec, sizeof(TrainRecord), 1, file);
+        updateTrainCache(trainID, rec, id);
+    }
     if (date < rec.saleDate1 || date > rec.saleDate2) return -1;
     return id;
 }
 
 bool TrainManager::getTrain(const char *trainID, TrainRecord &rec) {
+    int cidx = findTrainCache(trainID);
+    if (cidx >= 0) {
+        rec = trainCache[cidx].rec;
+        trainCache[cidx].stamp = ++trainClock;
+        return true;
+    }
     char key[64];
     makeKey64(key, trainID, std::strlen(trainID));
     int id;
     if (!index.findFirst(key, id)) return false;
     std::fseek(file, id * sizeof(TrainRecord), SEEK_SET);
     std::fread(&rec, sizeof(TrainRecord), 1, file);
+    updateTrainCache(trainID, rec, id);
     return true;
 }
 
 bool TrainManager::isReleased(const char *trainID) {
     TrainRecord rec;
     return getTrain(trainID, rec) && rec.released;
-
-
-
 }
 
 // OrderManager
