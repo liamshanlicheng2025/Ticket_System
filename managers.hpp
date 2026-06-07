@@ -1,4 +1,3 @@
-
 #ifndef MANAGERS_HPP
 #define MANAGERS_HPP
 #include "bptree.hpp"
@@ -106,17 +105,6 @@ public:
 private:
     void expandOnline();
     static unsigned int onlineHash(const char *s);
-    struct UserCacheEntry {
-        char username[21];
-        int recId;
-        int privilege;
-        bool valid;
-    };
-    static const int USER_CACHE_SIZE = 256;
-    UserCacheEntry userCache[USER_CACHE_SIZE];
-    int findUserCache(const char *username);
-    void updateUserCache(const char *username, int recId, int privilege);
-    void invalidateUserCache(const char *username);
 };
 
 class TrainManager {
@@ -136,21 +124,6 @@ public:
     int queryTrain(const char *trainID, int date);
     bool getTrain(const char *trainID, TrainRecord &rec);
     bool isReleased(const char *trainID);
-private:
-    struct TrainCacheEntry {
-        char trainID[21];
-        TrainRecord rec;
-        int recId;
-        bool valid;
-        unsigned long long stamp;
-    };
-    static const int TRAIN_CACHE_SIZE = 32;
-    TrainCacheEntry trainCache[TRAIN_CACHE_SIZE];
-    unsigned long long trainClock;
-    int findTrainCache(const char *trainID);
-    int chooseTrainCacheVictim();
-    void updateTrainCache(const char *trainID, const TrainRecord &rec, int recId);
-    void invalidateTrainCache(const char *trainID);
 };
 
 class OrderManager {
@@ -181,20 +154,19 @@ public:
     bool buySeat(const char *trainID, int date, int fromIdx, int toIdx, int num);
     void refundSeat(const char *trainID, int date, int fromIdx, int toIdx, int num);
     void initSeats(const char *trainID, int date, int totalSeats, int segCount);
+
 private:
-    struct SeatCacheEntry {
+    struct SeatIdCache {
         char trainID[21];
         int date;
         int recId;
-        int remain[MAX_STATION - 1];
         bool valid;
-        unsigned long long stamp;
     };
-    static const int SEAT_CACHE_SIZE = 8192;
-    SeatCacheEntry seatCache[SEAT_CACHE_SIZE];
-    unsigned long long seatClock;
-    int findSeatCache(const char *trainID, int date);
-    int chooseSeatCacheVictim();
+    static const int SEAT_ID_CACHE_SIZE = 8192;
+    SeatIdCache *seatIdCache;
+    unsigned int seatIdHashFunc(const char *trainID, int date);
+    int findSeatIdCache(const char *trainID, int date);
+    void updateSeatIdCache(const char *trainID, int date, int recId);
 };
 
 class StationIndex {
@@ -204,19 +176,6 @@ public:
     ~StationIndex();
     void addStation(const char *station, const char *trainID, int trainRecId);
     void getTrainsByStation(const char *station, int *outIds, int &cnt);
-private:
-    struct StCacheEntry {
-        char station[31];
-        int *ids;
-        int cnt;
-        bool valid;
-    };
-    static const int ST_CACHE_SIZE = 1024;
-    StCacheEntry stCache[ST_CACHE_SIZE];
-    int stCacheCount;
-    int findStCache(const char *station);
-    void insertStCache(const char *station, int *ids, int cnt);
-    void invalidateStCache(const char *station);
 };
 
 class PendingManager {
