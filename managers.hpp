@@ -112,6 +112,7 @@ public:
     FILE *file;
     BPTree index;
     int trainCount;
+    TrainRecord *trainData;
 
     TrainManager();
     ~TrainManager();
@@ -124,6 +125,10 @@ public:
     int queryTrain(const char *trainID, int date);
     bool getTrain(const char *trainID, TrainRecord &rec);
     bool isReleased(const char *trainID);
+
+private:
+    int trainDataCap;
+    void ensureTrainDataCap(int need);
 };
 
 class OrderManager {
@@ -156,17 +161,10 @@ public:
     void initSeats(const char *trainID, int date, int totalSeats, int segCount);
 
 private:
-    struct SeatIdCache {
-        char trainID[21];
-        int date;
-        int recId;
-        bool valid;
-    };
-    static const int SEAT_ID_CACHE_SIZE = 8192;
-    SeatIdCache *seatIdCache;
-    unsigned int seatIdHashFunc(const char *trainID, int date);
-    int findSeatIdCache(const char *trainID, int date);
-    void updateSeatIdCache(const char *trainID, int date, int recId);
+    SeatRecord *seatData;
+    int seatDataCount;
+    int seatDataCap;
+    void ensureSeatDataCap(int need);
 };
 
 class StationIndex {
