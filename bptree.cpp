@@ -80,7 +80,7 @@ void BPTree::initCacheIndex() {
     for (int i = 0; i < CACHE_HASH_SIZE; ++i) cache_head[i] = -1;
     for (int i = 0; i < CACHE_SIZE; ++i) {
         cache_slots[i].valid = false;
-        cache_slots[i].stamp = 0;
+        cache_slots[i].use_bit = false;
         cache_slots[i].hash_next = -1;
     }
     cache_clock = 0;
@@ -119,13 +119,17 @@ void BPTree::unlinkCacheSlot(int id) {
 int BPTree::chooseCacheSlot() {
     for (int i = 0; i < CACHE_SIZE; ++i)
         if (!cache_slots[i].valid) return i;
-    int victim = 0;
-    for (int i = 1; i < CACHE_SIZE; ++i)
-        if (cache_slots[i].stamp < cache_slots[victim].stamp) victim = i;
-    flushSlot(victim);
-    unlinkCacheSlot(cache_slots[victim].id);
-    cache_slots[victim].valid = false;
-    return victim;
+    while (true) {
+        int idx = cache_clock;
+        cache_clock = (cache_clock + 1) % CACHE_SIZE;
+        if (!cache_slots[idx].use_bit) {
+            flushSlot(idx);
+            unlinkCacheSlot(cache_slots[idx].id);
+            cache_slots[idx].valid = false;
+            return idx;
+        }
+        cache_slots[idx].use_bit = false;
+    }
 }
 
 BPTree::Node& BPTree::getNode(int id) {
@@ -138,15 +142,15 @@ BPTree::Node& BPTree::getNode(int id) {
     int found = findCacheSlot(id);
     if (found != -1) {
         CacheSlot& slot = cache_slots[found];
-        slot.stamp = ++cache_clock;
+        slot.use_bit = true;
         return slot.node;
     }
     int slot_id = chooseCacheSlot();
     CacheSlot& slot = cache_slots[slot_id];
     slot.valid = true;
     slot.dirty = false;
+    slot.use_bit = true;
     slot.id = id;
-    slot.stamp = ++cache_clock;
     readNodeDisk(id, slot.node);
     linkCacheSlot(slot_id, id);
     return slot.node;
@@ -164,8 +168,8 @@ BPTree::Node& BPTree::initNodeInCache(int id, int type) {
     CacheSlot& slot = cache_slots[slot_id];
     slot.valid = true;
     slot.dirty = true;
+    slot.use_bit = true;
     slot.id = id;
-    slot.stamp = ++cache_clock;
     if (!linked) linkCacheSlot(slot_id, id);
     std::memset(&slot.node, 0, sizeof(Node));
     slot.node.type = type;
