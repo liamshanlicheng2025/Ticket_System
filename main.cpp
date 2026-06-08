@@ -305,12 +305,7 @@ int main() {
             if (id < 0) {
                 printf("[%lld] -1\n", ts);
             } else {
-                TrainRecord rec;
-                std::fseek(trains.file, id * sizeof(TrainRecord), SEEK_SET);
-                if (std::fread(&rec, sizeof(TrainRecord), 1, trains.file) != 1) {
-                    printf("[%lld] -1\n", ts);
-                    continue;
-                }
+                TrainRecord rec = trains.trainData[id];
                 printf("[%lld] %s %c\n", ts, rec.trainID, rec.type);
                 for (int idx = 0; idx < rec.stationNum; ++idx) {
                     int arrMin, levMin, arrDayOff, levDayOff;
@@ -363,13 +358,7 @@ int main() {
             long long lastPos = -1;
             for (int i = 0; i < cntS; ++i) {
                 int tid = trainsS[i];
-                long long pos = (long long)tid * sizeof(TrainRecord);
-                if (pos != lastPos) {
-                    std::fseek(trains.file, pos, SEEK_SET);
-                }
-                TrainRecord rec;
-                if (std::fread(&rec, sizeof(TrainRecord), 1, trains.file) != 1) continue;
-                lastPos = pos + sizeof(TrainRecord);
+                TrainRecord rec = trains.trainData[tid];
                 if (!rec.released) continue;
                 int idxS = -1;
                 for (int k = 0; k < rec.stationNum; ++k)
@@ -458,9 +447,7 @@ int main() {
             char bestID1[21] = "", bestID2[21] = "";
             for (int i = 0; i < cntS; ++i) {
                 int tid1 = trainsS[i];
-                TrainRecord rec1;
-                std::fseek(trains.file, tid1 * sizeof(TrainRecord), SEEK_SET);
-                if (std::fread(&rec1, sizeof(TrainRecord), 1, trains.file) != 1) continue;
+                TrainRecord rec1 = trains.trainData[tid1];
                 if (!rec1.released) continue;
                 int idxS = -1;
                 for (int k = 0; k < rec1.stationNum; ++k)
@@ -485,9 +472,7 @@ int main() {
                     for (int j = 0; j < cntT; ++j) {
                         int tid2 = trainsT[j];
                         if (tid2 == tid1) continue;
-                        TrainRecord rec2;
-                        std::fseek(trains.file, tid2 * sizeof(TrainRecord), SEEK_SET);
-                        if (std::fread(&rec2, sizeof(TrainRecord), 1, trains.file) != 1) continue;
+                        TrainRecord rec2 = trains.trainData[tid2];
                         if (!rec2.released) continue;
                         int idxK2 = -1, idxT2 = -1;
                         for (int x = 0; x < rec2.stationNum; ++x) {
