@@ -120,9 +120,10 @@ public:
                  int travelTimes[], int stopoverTimes[],
                  int sale1, int sale2, char type);
     int deleteTrain(const char *trainID);
-    int releaseTrain(const char *trainID);
+    int releaseTrain(const char *trainID, int &recId);
     int queryTrain(const char *trainID, int date);
     bool getTrain(const char *trainID, TrainRecord &rec);
+    bool getTrainByRecId(int recId, TrainRecord &rec);
     bool isReleased(const char *trainID);
 };
 
@@ -163,6 +164,15 @@ public:
     ~StationIndex();
     void addStation(const char *station, const char *trainID, int trainRecId);
     void getTrainsByStation(const char *station, int *outIds, int &cnt);
+};
+
+class DirectRouteIndex {
+public:
+    BPTree index;
+    DirectRouteIndex();
+    ~DirectRouteIndex();
+    void addRoute(const char *from, const char *to, int trainRecId);
+    void getTrainsByRoute(const char *from, const char *to, int *outIds, int &cnt);
 };
 
 class PendingManager {
