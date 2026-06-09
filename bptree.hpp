@@ -41,14 +41,14 @@ private:
     struct CacheSlot {
         bool valid;
         bool dirty;
-        bool use_bit;
         int id;
         int hash_next;
+        unsigned long long stamp;
         Node node;
     };
 
     static const int MIN_KEYS = ORDER / 2;
-    static const int CACHE_SIZE = 640;
+    static const int CACHE_SIZE = 280;
     static const int CACHE_HASH_SIZE = 1024;
     static const int MAX_HEIGHT = 16;
     static const unsigned int MAGIC = 0x33545042u;
@@ -58,7 +58,7 @@ private:
     Header header;
     CacheSlot *cache_slots;   // 改为堆分配指针
     int cache_head[CACHE_HASH_SIZE];
-    int cache_clock;
+    unsigned long long cache_clock;
     char filename[64];
 
     // 禁止拷贝
