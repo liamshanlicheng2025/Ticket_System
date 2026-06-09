@@ -112,7 +112,6 @@ public:
     FILE *file;
     BPTree index;
     int trainCount;
-    TrainRecord *trainData;
 
     TrainManager();
     ~TrainManager();
@@ -125,10 +124,6 @@ public:
     int queryTrain(const char *trainID, int date);
     bool getTrain(const char *trainID, TrainRecord &rec);
     bool isReleased(const char *trainID);
-
-private:
-    int trainDataCap;
-    void ensureTrainDataCap(int need);
 };
 
 class OrderManager {
@@ -159,12 +154,6 @@ public:
     bool buySeat(const char *trainID, int date, int fromIdx, int toIdx, int num);
     void refundSeat(const char *trainID, int date, int fromIdx, int toIdx, int num);
     void initSeats(const char *trainID, int date, int totalSeats, int segCount);
-
-private:
-    SeatRecord *seatData;
-    int seatDataCount;
-    int seatDataCap;
-    void ensureSeatDataCap(int need);
 };
 
 class StationIndex {
