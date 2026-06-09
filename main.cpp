@@ -461,16 +461,12 @@ int main() {
             TicketResult best1, best2;
             long long bestTotalTime = 0x7fffffffffffffffLL, bestTotalPrice = 0x7fffffffffffffffLL;
             char bestID1[21] = "", bestID2[21] = "";
-            long long lastPos1 = -1;
             for (int i = 0; i < cntS; ++i) {
                 int tid1 = trainsS[i];
                 long long pos1 = (long long)tid1 * sizeof(TrainRecord);
-                if (pos1 != lastPos1) {
-                    std::fseek(trains.file, pos1, SEEK_SET);
-                }
+                std::fseek(trains.file, pos1, SEEK_SET);
                 TrainRecord rec1;
                 if (std::fread(&rec1, sizeof(TrainRecord), 1, trains.file) != 1) continue;
-                lastPos1 = pos1 + sizeof(TrainRecord);
                 if (!rec1.released) continue;
                 int idxS = -1;
                 for (int k = 0; k < rec1.stationNum; ++k)
@@ -537,7 +533,7 @@ int main() {
                         else if (byTime) {
                             if (totalTime < bestTotalTime) better = true;
                             else if (totalTime == bestTotalTime && totalPrice < bestTotalPrice) better = true;
-                            else if (totalTime == bestTotalPrice && totalPrice == bestTotalPrice) {
+                            else if (totalTime == bestTotalTime && totalPrice == bestTotalPrice) {
                                 int cmp1 = std::strcmp(rec1.trainID, bestID1);
                                 if (cmp1 < 0) better = true;
                                 else if (cmp1 == 0 && std::strcmp(rec2.trainID, bestID2) < 0) better = true;
