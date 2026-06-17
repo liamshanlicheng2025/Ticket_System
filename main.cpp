@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <algorithm>
 #include <new>
 #include "managers.hpp"
 
@@ -35,22 +36,6 @@ void quickSortTickets(TicketResult arr[], int left, int right, bool byTime) {
     }
     quickSortTickets(arr, left, j, byTime);
     quickSortTickets(arr, i, right, byTime);
-}
-
-void quickSortInt(int arr[], int left, int right) {
-    if (left >= right) return;
-    int i = left, j = right;
-    int pivot = arr[(left + right) / 2];
-    while (i <= j) {
-        while (arr[i] < pivot) ++i;
-        while (arr[j] > pivot) --j;
-        if (i <= j) {
-            int tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
-            ++i; --j;
-        }
-    }
-    quickSortInt(arr, left, j);
-    quickSortInt(arr, i, right);
 }
 
 const char* parseLine(char *line, long long &ts, char params[256][2][5000], int &paramCount) {
@@ -150,11 +135,10 @@ int main() {
     OrderManager orders;
     SeatManager seats;
     StationIndex stIndex;
-    DirectRouteIndex directIndex;
     PendingManager pending(&orders, &seats, &trains);
 
     char line[2048];
-    static char params[64][2][5000];
+    static char params[256][2][5000];
     while (std::fgets(line, sizeof(line), stdin)) {
         long long ts;
         int paramCnt;
@@ -290,16 +274,7 @@ int main() {
         }
         else if (std::strcmp(cmd, "release_train") == 0) {
             const char *i = getParam(params, paramCnt, 'i');
-            int recId;
-            int res = trains.releaseTrain(i, recId);
-            if (res == 0) {
-                TrainRecord tr;
-                trains.getTrainByRecId(recId, tr);
-                int n = tr.stationNum;
-                for (int a = 0; a < n; ++a)
-                    for (int b = a + 1; b < n; ++b)
-                        directIndex.addRoute(tr.stations[a], tr.stations[b], recId);
-            }
+            int res = trains.releaseTrain(i);
             printf("[%lld] %d\n", ts, res);
         }
         else if (std::strcmp(cmd, "query_train") == 0) {
@@ -359,17 +334,14 @@ int main() {
             int mon, day;
             std::sscanf(d, "%d-%d", &mon, &day);
             int date = dateToDays(mon, day);
-            int trainIds[5000], cnt;
-            directIndex.getTrainsByRoute(s, t, trainIds, cnt);
-            if (cnt > 1) quickSortInt(trainIds, 0, cnt - 1);
+            int trainsS[5000], cntS;
+            stIndex.getTrainsByStation(s, trainsS, cntS);
+            std::sort(trainsS, trainsS + cntS);
             TicketResult results[5000];
             int resCnt = 0;
-            int prefixArrMin[MAX_STATION], prefixArrDay[MAX_STATION];
-            int prefixLevMin[MAX_STATION], prefixLevDay[MAX_STATION];
-            int prefixPrice[MAX_STATION];
             long long lastPos = -1;
-            for (int i = 0; i < cnt; ++i) {
-                int tid = trainIds[i];
+            for (int i = 0; i < cntS; ++i) {
+                int tid = trainsS[i];
                 long long pos = (long long)tid * sizeof(TrainRecord);
                 if (pos != lastPos) {
                     std::fseek(trains.file, pos, SEEK_SET);
@@ -378,40 +350,23 @@ int main() {
                 if (std::fread(&rec, sizeof(TrainRecord), 1, trains.file) != 1) continue;
                 lastPos = pos + sizeof(TrainRecord);
                 if (!rec.released) continue;
-                int idxS = -1, idxT = -1;
-                for (int k = 0; k < rec.stationNum; ++k) {
-                    if (std::strcmp(rec.stations[k], s) == 0) idxS = k;
-                    if (idxS != -1 && std::strcmp(rec.stations[k], t) == 0) { idxT = k; break; }
-                }
-                if (idxS == -1 || idxT == -1) continue;
-                // 预计算该车次各站的时间、价格前缀
-                prefixArrMin[0] = rec.startTime;
-                prefixArrDay[0] = 0;
-                prefixLevMin[0] = rec.startTime;
-                prefixLevDay[0] = 0;
-                prefixPrice[0] = 0;
-                for (int k = 1; k < rec.stationNum; ++k) {
-                    int curMin = prefixLevMin[k - 1] + rec.travelTimes[k - 1];
-                    int dayOff = prefixLevDay[k - 1];
-                    while (curMin >= 1440) { curMin -= 1440; ++dayOff; }
-                    prefixArrMin[k] = curMin;
-                    prefixArrDay[k] = dayOff;
-                    if (k < rec.stationNum - 1) {
-                        curMin += rec.stopoverTimes[k - 1];
-                        while (curMin >= 1440) { curMin -= 1440; ++dayOff; }
-                        prefixLevMin[k] = curMin;
-                        prefixLevDay[k] = dayOff;
-                    } else {
-                        prefixLevMin[k] = prefixArrMin[k];
-                        prefixLevDay[k] = prefixArrDay[k];
-                    }
-                    prefixPrice[k] = prefixPrice[k - 1] + rec.prices[k - 1];
-                }
-                int startDate = date - prefixLevDay[idxS];
+                int idxS = -1;
+                for (int k = 0; k < rec.stationNum; ++k)
+                    if (std::strcmp(rec.stations[k], s) == 0) { idxS = k; break; }
+                if (idxS == -1) continue;
+                int idxT = -1;
+                for (int k = idxS + 1; k < rec.stationNum; ++k)
+                    if (std::strcmp(rec.stations[k], t) == 0) { idxT = k; break; }
+                if (idxT == -1) continue;
+                int sArr, sLev, sArrDayOff, sLevDayOff;
+                getStationTime(rec, date, idxS, sArr, sLev, sArrDayOff, sLevDayOff);
+                int startDate = date - sLevDayOff;
                 if (startDate < rec.saleDate1 || startDate > rec.saleDate2) continue;
-                int totalMin = (prefixArrDay[idxT] - prefixLevDay[idxS]) * 1440
-                             + prefixArrMin[idxT] - prefixLevMin[idxS];
-                int price = prefixPrice[idxT] - prefixPrice[idxS];
+                int price = 0;
+                for (int k = idxS; k < idxT; ++k) price += rec.prices[k];
+                int tArr, tLev, tArrDayOff, tLevDayOff;
+                getStationTime(rec, startDate, idxT, tArr, tLev, tArrDayOff, tLevDayOff);
+                int totalMin = (tArrDayOff - sLevDayOff) * 1440 + tArr - sLev;
                 int minSeat = seats.querySeat(rec.trainID, startDate, idxS, idxT);
                 if (minSeat < 0) minSeat = rec.seatNum;
                 TicketResult res;
@@ -419,10 +374,10 @@ int main() {
                 std::strcpy(res.from, s);
                 std::strcpy(res.to, t);
                 int lM, lD, lH, lMin;
-                daysToDate(date, lM, lD); minToTime(prefixLevMin[idxS], lH, lMin);
+                daysToDate(date, lM, lD); minToTime(sLev, lH, lMin);
                 res.lMonth = lM; res.lDay = lD; res.lHour = lH; res.lMin = lMin;
                 int aM, aD, aH, aMin;
-                daysToDate(startDate + prefixArrDay[idxT], aM, aD); minToTime(prefixArrMin[idxT], aH, aMin);
+                daysToDate(startDate + tArrDayOff, aM, aD); minToTime(tArr, aH, aMin);
                 res.aMonth = aM; res.aDay = aD; res.aHour = aH; res.aMin = aMin;
                 res.price = price;
                 res.seat = minSeat;
@@ -453,19 +408,18 @@ int main() {
             int date = dateToDays(mon, day);
             int trainsS[5000], cntS;
             stIndex.getTrainsByStation(s, trainsS, cntS);
+            std::sort(trainsS, trainsS + cntS);
             int trainsT[5000], cntT;
             stIndex.getTrainsByStation(t, trainsT, cntT);
-            if (cntS > 1) quickSortInt(trainsS, 0, cntS - 1);
-            if (cntT > 1) quickSortInt(trainsT, 0, cntT - 1);
+            std::sort(trainsT, trainsT + cntT);
             bool found = false;
             TicketResult best1, best2;
             long long bestTotalTime = 0x7fffffffffffffffLL, bestTotalPrice = 0x7fffffffffffffffLL;
             char bestID1[21] = "", bestID2[21] = "";
             for (int i = 0; i < cntS; ++i) {
                 int tid1 = trainsS[i];
-                long long pos1 = (long long)tid1 * sizeof(TrainRecord);
-                std::fseek(trains.file, pos1, SEEK_SET);
                 TrainRecord rec1;
+                std::fseek(trains.file, tid1 * sizeof(TrainRecord), SEEK_SET);
                 if (std::fread(&rec1, sizeof(TrainRecord), 1, trains.file) != 1) continue;
                 if (!rec1.released) continue;
                 int idxS = -1;
@@ -488,20 +442,12 @@ int main() {
                     for (int x = idxS; x < k; ++x) price1 += rec1.prices[x];
                     int ss1 = seats.querySeat(rec1.trainID, startDate1, idxS, k);
                     if (ss1 < 0) ss1 = rec1.seatNum;
-                    int routeIds[5000], routeCnt;
-                    directIndex.getTrainsByRoute(stationK, t, routeIds, routeCnt);
-                    if (routeCnt > 1) quickSortInt(routeIds, 0, routeCnt - 1);
-                    long long lastPos2 = -1;
-                    for (int j = 0; j < routeCnt; ++j) {
-                        int tid2 = routeIds[j];
+                    for (int j = 0; j < cntT; ++j) {
+                        int tid2 = trainsT[j];
                         if (tid2 == tid1) continue;
-                        long long pos2 = (long long)tid2 * sizeof(TrainRecord);
-                        if (pos2 != lastPos2) {
-                            std::fseek(trains.file, pos2, SEEK_SET);
-                        }
                         TrainRecord rec2;
+                        std::fseek(trains.file, tid2 * sizeof(TrainRecord), SEEK_SET);
                         if (std::fread(&rec2, sizeof(TrainRecord), 1, trains.file) != 1) continue;
-                        lastPos2 = pos2 + sizeof(TrainRecord);
                         if (!rec2.released) continue;
                         int idxK2 = -1, idxT2 = -1;
                         for (int x = 0; x < rec2.stationNum; ++x) {
@@ -533,7 +479,7 @@ int main() {
                         else if (byTime) {
                             if (totalTime < bestTotalTime) better = true;
                             else if (totalTime == bestTotalTime && totalPrice < bestTotalPrice) better = true;
-                            else if (totalTime == bestTotalTime && totalPrice == bestTotalPrice) {
+                            else if (totalTime == bestTotalPrice && totalPrice == bestTotalPrice) {
                                 int cmp1 = std::strcmp(rec1.trainID, bestID1);
                                 if (cmp1 < 0) better = true;
                                 else if (cmp1 == 0 && std::strcmp(rec2.trainID, bestID2) < 0) better = true;
@@ -745,13 +691,11 @@ int main() {
             std::remove("seat_index.dat");
             std::remove("station_index.dat");
             std::remove("pending_index.dat");
-            std::remove("direct_route_index.dat");
             new (&users) UserManager();
             new (&trains) TrainManager();
             new (&orders) OrderManager();
             new (&seats) SeatManager();
             new (&stIndex) StationIndex();
-            new (&directIndex) DirectRouteIndex();
             new (&pending) PendingManager(&orders, &seats, &trains);
             printf("[%lld] 0\n", ts);
         }
