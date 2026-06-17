@@ -5,12 +5,11 @@
 #include <cstring>
 
 const int MAX_STATION = 100;
-const int ONLINE_HASH_SIZE = 8192;
+const int MAX_LOGIN = 1000;
 
-struct OnlineEntry {
+struct OnlineUser {
     char name[21];
     int privilege;
-    int next;
 };
 
 struct UserRecord {
@@ -55,12 +54,12 @@ struct SeatRecord {
 
 // 安全的 scanPrefix 回调上下文
 struct ScanCtx {
-    int ids[3000];
+    int ids[5000];
     int cnt;
 };
 
 struct OrderScanCtx {
-    int ids[3000];
+    int ids[5000];
     int cnt;
     const char *username;
     int usernameLen;
@@ -84,11 +83,8 @@ public:
     FILE *file;
     BPTree index;
     int userCount;
-    OnlineEntry *onlinePool;
-    int *onlineHead;
+    OnlineUser online[MAX_LOGIN];
     int onlineCnt;
-    int onlineCap;
-    int onlineFree;
 
     UserManager();
     ~UserManager();
@@ -102,9 +98,6 @@ public:
                       const char *mail, int priv);
     bool isOnline(const char *username);
     int getPrivilege(const char *username);
-private:
-    void expandOnline();
-    static unsigned int onlineHash(const char *s);
 };
 
 class TrainManager {
@@ -120,10 +113,9 @@ public:
                  int travelTimes[], int stopoverTimes[],
                  int sale1, int sale2, char type);
     int deleteTrain(const char *trainID);
-    int releaseTrain(const char *trainID, int &recId);
+    int releaseTrain(const char *trainID);
     int queryTrain(const char *trainID, int date);
     bool getTrain(const char *trainID, TrainRecord &rec);
-    bool getTrainByRecId(int recId, TrainRecord &rec);
     bool isReleased(const char *trainID);
 };
 
@@ -164,15 +156,6 @@ public:
     ~StationIndex();
     void addStation(const char *station, const char *trainID, int trainRecId);
     void getTrainsByStation(const char *station, int *outIds, int &cnt);
-};
-
-class DirectRouteIndex {
-public:
-    BPTree index;
-    DirectRouteIndex();
-    ~DirectRouteIndex();
-    void addRoute(const char *from, const char *to, int trainRecId);
-    void getTrainsByRoute(const char *from, const char *to, int *outIds, int &cnt);
 };
 
 class PendingManager {
